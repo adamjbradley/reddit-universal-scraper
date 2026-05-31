@@ -119,38 +119,38 @@ def sanitize_emotes(text: str) -> str:
     return re.sub(r'!\[[^\]]*\]\(emote\|([^)]+)\)', r'[emote: \1]', text)
 
 def load_subreddit_data(subreddit_path):
-    """Load all data for a subreddit."""
+    """Load all data for a subreddit from the SQLite DB (single source of truth)."""
     data = {}
-    
-    posts_file = subreddit_path / 'posts.csv'
-    if posts_file.exists():
-        data['posts'] = pd.read_csv(posts_file)
-    
-    comments_file = subreddit_path / 'comments.csv'
-    if comments_file.exists():
-        data['comments'] = pd.read_csv(comments_file)
-    
+    name = subreddit_path.name if hasattr(subreddit_path, 'name') else str(subreddit_path)
+    sub = name[2:] if name.startswith(('r_', 'u_')) else name
+
+    try:
+        from export.database import search_posts, get_comments_by_subreddit
+        posts = search_posts(subreddit=sub, limit=100000)
+        if posts:
+            data['posts'] = pd.DataFrame(posts)
+        comments = get_comments_by_subreddit(sub)
+        if comments:
+            data['comments'] = pd.DataFrame(comments)
+    except Exception as e:
+        print(f"load_subreddit_data DB error: {e}")
+
     return data
 
 def get_available_data():
-    """Get list of scraped subreddits and users."""
-    data_dir = Path(__file__).parent.parent / 'data'
+    """Get list of scraped subreddits from the SQLite DB (single source of truth).
+
+    Returns r_-prefixed names to match the rest of the dashboard's expectations.
+    """
     data = {'subreddits': [], 'users': []}
-    
-    if data_dir.exists():
-        for sub_dir in data_dir.iterdir():
-            if sub_dir.is_dir():
-                # Check for r_ or u_ prefix (standard scraper format)
-                # We allow folders even without posts.csv so users can see empty scrapes
-                if sub_dir.name.startswith('u_'):
-                    data['users'].append(sub_dir.name)
-                elif sub_dir.name.startswith('r_'):
-                    data['subreddits'].append(sub_dir.name)
-                elif (sub_dir / 'posts.csv').exists():
-                    # Fallback for old/other folders that have data
-                    data['subreddits'].append(sub_dir.name)
-    
-    # Sort lists
+    try:
+        from export.database import get_all_subreddits
+        for s in get_all_subreddits():
+            if s.get('subreddit'):
+                data['subreddits'].append(f"r_{s['subreddit']}")
+    except Exception as e:
+        print(f"get_available_data DB error: {e}")
+
     data['subreddits'].sort()
     data['users'].sort()
     return data

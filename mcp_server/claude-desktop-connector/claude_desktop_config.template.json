@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "reddit-scraper": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "mcp-remote",
+        "__SERVER_URL__",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer __MCP_TOKEN__"
+      }
+    }
+  }
+}

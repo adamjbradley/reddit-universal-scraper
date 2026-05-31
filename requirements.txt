@@ -22,3 +22,12 @@ psutil
 duckdb
 defusedxml
 
+# MCP Server (remote access)
+mcp
+httpx
+
+# Analytics pipeline
+vaderSentiment
+networkx
+fastembed
+

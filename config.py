@@ -142,6 +142,18 @@ def get_formatted_proxy_url(proxy_url, country=None, session_id=None, force_rota
     except Exception:
         return proxy_url
 
+# --- REDDIT OFFICIAL API (OAuth) ---
+# Register an app at https://www.reddit.com/prefs/apps. When CLIENT_ID and
+# CLIENT_SECRET are set, the scraper uses the official API (oauth.reddit.com)
+# instead of the public mirrors. Provide USERNAME/PASSWORD for a "script" app,
+# or leave them blank for app-only (client_credentials) read access.
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
+REDDIT_USERNAME = os.getenv("REDDIT_USERNAME", "")
+REDDIT_PASSWORD = os.getenv("REDDIT_PASSWORD", "")
+# Reddit requires a unique, descriptive User-Agent for API access.
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "python:reddit-universal-scraper:v1.0 (by /u/unknown)")
+
 # --- DATABASE SETTINGS ---
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 

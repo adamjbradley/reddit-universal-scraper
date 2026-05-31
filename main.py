@@ -41,10 +41,44 @@ if env_path.exists():
                 os.environ[key.strip()] = val.strip().strip('"').strip("'")
 
 # --- CONFIGURATION ---
-from config import USER_AGENT, MIRRORS
+from config import (
+    USER_AGENT, MIRRORS,
+    REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME,
+    REDDIT_PASSWORD, REDDIT_USER_AGENT,
+)
 
 PROXY_URL = os.getenv("PROXY_URL", "")
 PROXY_TO_USE = ""
+
+# Reddit official API (OAuth) is used when client credentials are configured.
+USE_REDDIT_OAUTH = bool(REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET)
+
+
+def ensure_oauth_header(force=False):
+    """Fetch/refresh the Reddit bearer token and set it on the session."""
+    from scraper import reddit_oauth
+    token = reddit_oauth.get_token(
+        REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET,
+        REDDIT_USERNAME, REDDIT_PASSWORD, REDDIT_USER_AGENT, force=force,
+    )
+    SESSION.headers["Authorization"] = f"bearer {token}"
+
+
+def respect_rate_limit(response):
+    """Proactively stay within Reddit's OAuth rate limit.
+
+    oauth.reddit.com returns X-Ratelimit-Remaining / -Reset on every response.
+    When the remaining budget for the current window is nearly exhausted, sleep
+    until the window resets so we never exceed the limit (or trigger a 429).
+    """
+    try:
+        remaining = float(response.headers.get("x-ratelimit-remaining", "100"))
+        reset = float(response.headers.get("x-ratelimit-reset", "0"))
+    except (TypeError, ValueError):
+        return
+    if remaining <= 2 and reset > 0:
+        print(f"   ⏳ Reddit rate limit nearly reached ({remaining:.0f} left) - pausing {reset:.0f}s")
+        time.sleep(reset + 1)
 
 def rotate_session_proxy(country=None, session_id=None, force_rotate=False):
     """Dynamically rotates/updates the proxy URL on the global SESSION object."""
@@ -72,8 +106,19 @@ def request_with_retry(url, retries=3, backoff=2, **kwargs):
     """Makes a GET request with retry logic, especially useful for rotating proxies."""
     for attempt in range(retries):
         try:
-            rotate_session_proxy(force_rotate=True)
+            if USE_REDDIT_OAUTH:
+                ensure_oauth_header()
+            else:
+                rotate_session_proxy(force_rotate=True)
             response = SESSION.get(url, **kwargs)
+            if USE_REDDIT_OAUTH:
+                respect_rate_limit(response)
+            if response.status_code in (401, 403) and USE_REDDIT_OAUTH and attempt < retries - 1:
+                # Token may be expired/invalid - force a refresh and retry.
+                ensure_oauth_header(force=True)
+                raise requests.exceptions.RequestException(
+                    f"OAuth {response.status_code}, refreshed token"
+                )
             if response.status_code == 200:
                 content_type = response.headers.get("Content-Type", "")
                 if "application/json" in content_type:
@@ -83,7 +128,15 @@ def request_with_retry(url, retries=3, backoff=2, **kwargs):
                         raise requests.exceptions.RequestException("Bot challenge detected on mirror")
                 return response
             elif response.status_code == 429:
-                time.sleep(backoff * (attempt + 1))
+                # Honor Reddit's Retry-After / rate-limit reset if provided.
+                wait = backoff * (attempt + 1)
+                for h in ("retry-after", "x-ratelimit-reset"):
+                    try:
+                        wait = max(wait, float(response.headers.get(h, 0)))
+                    except (TypeError, ValueError):
+                        pass
+                print(f"   ⏳ 429 rate limited - waiting {wait:.0f}s")
+                time.sleep(wait)
             else:
                 raise requests.exceptions.HTTPError(f"HTTP {response.status_code}")
         except Exception as e:
@@ -105,11 +158,8 @@ def setup_directories(target, prefix):
         "images": f"{base_dir}/media/images",
         "videos": f"{base_dir}/media/videos",
     }
-    
-    for key in ["base", "media", "images", "videos"]:
-        if not os.path.exists(dirs[key]):
-            os.makedirs(dirs[key])
-    
+    # Directories are created lazily by download_post_media only when media is
+    # actually saved, so DB-only (no-media) scrapes leave no folders behind.
     return dirs
 
 def get_file_path(target, type_prefix):
@@ -323,7 +373,11 @@ def download_post_media(post_data, dirs, post_id):
     """Downloads all media from a post."""
     media = get_media_urls(post_data)
     downloaded = {"images": 0, "videos": 0}
-    
+
+    # Create media directories on demand (they aren't pre-created any more).
+    os.makedirs(dirs["images"], exist_ok=True)
+    os.makedirs(dirs["videos"], exist_ok=True)
+
     for i, img_url in enumerate(media["images"][:5]):
         ext = os.path.splitext(urlparse(img_url).path)[1] or '.jpg'
         save_path = os.path.join(dirs["images"], f"{post_id}_{i}{ext}")
@@ -350,47 +404,84 @@ def download_post_media(post_data, dirs, post_id):
     return downloaded
 
 # --- COMMENT SCRAPING ---
-def scrape_comments(permalink, max_depth=3):
-    """Scrapes comments from a post."""
-    comments = []
-    
+# Age-aware comment retrieval policy. New posts are still gaining replies, so we grab
+# the full tree; older threads are scored by the community, so we switch to the most
+# up-voted comments (upvotes matter more than reply count once a thread matures).
+NEW_POST_WINDOW_HOURS = 48      # "new" = full comment tree, every reply, no score floor
+NEW_MAX_DEPTH = 10              # effectively the whole tree for these subs
+MATURE_MAX_DEPTH = 3            # mature threads: shallower
+MATURE_COMMENT_SCORE_MIN = 5   # mature threads: keep only comments with >= this upvotes
+COMMENT_REFRESH_DAYS = 14       # how far back the smart refresh revisits stored threads
+
+
+def comment_fetch_policy(created_utc_iso):
+    """Pick (sort, max_depth, score_min) for a post based on its age.
+
+    New (<=48h): full tree, all replies, no upvote floor.
+    Mature (>48h): Reddit's top-sorted comments, keep only those with >=5 upvotes.
+    """
     try:
-        if not permalink.startswith('http'):
-            url = f"https://old.reddit.com{permalink}.json?limit=100"
+        age_h = (datetime.datetime.now()
+                 - datetime.datetime.fromisoformat(created_utc_iso)).total_seconds() / 3600
+    except (ValueError, TypeError):
+        age_h = float("inf")
+    if age_h <= NEW_POST_WINDOW_HOURS:
+        return (None, NEW_MAX_DEPTH, 0)
+    return ("top", MATURE_MAX_DEPTH, MATURE_COMMENT_SCORE_MIN)
+
+
+def scrape_comments(permalink, max_depth=3, sort=None, score_min=0):
+    """Scrapes comments from a post.
+
+    sort: Reddit comment sort ('top', 'best', 'new'...) or None for the default.
+    score_min: drop comments below this upvote count (replies are still traversed,
+        so a high-scoring reply under a low-scoring parent is still captured).
+    """
+    comments = []
+    sort_q = f"&sort={sort}" if sort else ""
+
+    try:
+        if USE_REDDIT_OAUTH:
+            # permalink is a path like /r/sub/comments/id/title/ ; use the OAuth host.
+            path = urlparse(permalink).path if permalink.startswith('http') else permalink
+            url = f"https://oauth.reddit.com{path}?limit=100{sort_q}"
+        elif not permalink.startswith('http'):
+            url = f"https://old.reddit.com{permalink}.json?limit=100{sort_q}"
         else:
-            url = f"{permalink}.json?limit=100"
-        
+            url = f"{permalink}.json?limit=100{sort_q}"
+
         response = request_with_retry(url, timeout=15)
         if response.status_code != 200:
             return comments
-        
+
         data = response.json()
-        
+
         if len(data) > 1:
             comment_data = data[1]['data']['children']
-            comments = parse_comments(comment_data, permalink, depth=0, max_depth=max_depth)
-    
+            comments = parse_comments(comment_data, permalink, depth=0,
+                                      max_depth=max_depth, score_min=score_min)
+
     except Exception as e:
         pass
-    
+
     if len(comments) > 0:
         print(f"   + Scraped {len(comments)} comments")
-    
+
     return comments
 
-def parse_comments(comment_list, post_permalink, depth=0, max_depth=3):
-    """Recursively parses comments."""
+def parse_comments(comment_list, post_permalink, depth=0, max_depth=3, score_min=0):
+    """Recursively parses comments, keeping those scoring >= score_min."""
     comments = []
-    
+
     if depth > max_depth:
         return comments
-    
+
     for item in comment_list:
         if item['kind'] != 't1':
             continue
-        
+
         c = item['data']
-        
+
         comment = {
             "post_permalink": post_permalink,
             "comment_id": c.get('id'),
@@ -402,14 +493,208 @@ def parse_comments(comment_list, post_permalink, depth=0, max_depth=3):
             "depth": depth,
             "is_submitter": c.get('is_submitter', False),
         }
-        comments.append(comment)
-        
+        # Upvote floor for mature threads; replies are still traversed below so a
+        # popular reply under an unpopular parent is not lost.
+        if comment["score"] >= score_min:
+            comments.append(comment)
+
         replies = c.get('replies')
         if replies and isinstance(replies, dict):
             reply_children = replies.get('data', {}).get('children', [])
-            comments.extend(parse_comments(reply_children, post_permalink, depth + 1, max_depth))
-    
+            comments.extend(parse_comments(reply_children, post_permalink, depth + 1,
+                                           max_depth, score_min))
+
     return comments
+
+
+def fetch_post_meta_batch(post_ids):
+    """Current num_comments + score for up to 100 posts via Reddit's /api/info.
+
+    One cheap request covers 100 stored threads, so we can detect which gained
+    comments without re-fetching every thread.
+    """
+    if not post_ids:
+        return {}
+    fullnames = ",".join(f"t3_{pid}" for pid in post_ids[:100])
+    if USE_REDDIT_OAUTH:
+        url = f"https://oauth.reddit.com/api/info?id={fullnames}&raw_json=1"
+    else:
+        url = f"https://www.reddit.com/api/info.json?id={fullnames}&raw_json=1"
+    meta = {}
+    try:
+        resp = request_with_retry(url, timeout=15)
+        if resp.status_code == 200:
+            for child in resp.json().get('data', {}).get('children', []):
+                d = child.get('data', {})
+                pid = d.get('id')
+                if pid:
+                    meta[pid] = {"num_comments": d.get('num_comments', 0),
+                                 "score": d.get('score', 0)}
+    except Exception as e:
+        print(f"   ⚠️ /api/info failed: {e}")
+    return meta
+
+
+def _fetch_one_author_age(username):
+    """Fetch + store one author's account metadata AND lifecycle status. Distinguishes
+    active vs suspended (Reddit-banned: 200 + is_suspended) vs deleted (404). Conservative:
+    transient errors (401/403/429/5xx/network) record 'unknown', never a false 'gone'."""
+    from export.database import save_author, set_author_status
+    url = f"https://oauth.reddit.com/user/{username}/about"
+    try:
+        if USE_REDDIT_OAUTH:
+            ensure_oauth_header()
+        resp = SESSION.get(url, timeout=15)
+        if USE_REDDIT_OAUTH:
+            respect_rate_limit(resp)
+        sc = resp.status_code
+        if sc == 200:
+            d = resp.json().get("data", {}) or {}
+            if d.get("is_suspended"):
+                set_author_status(username, "suspended")  # Reddit-banned: strongest tell
+                return
+            cu = d.get("created_utc")
+            if cu:
+                save_author(
+                    username, datetime.datetime.fromtimestamp(cu).isoformat(),
+                    round((time.time() - cu) / 86400, 1),
+                    comment_karma=d.get("comment_karma"), link_karma=d.get("link_karma"),
+                    total_karma=d.get("total_karma"), awardee_karma=d.get("awardee_karma"),
+                    is_mod=int(bool(d.get("is_mod"))), is_gold=int(bool(d.get("is_gold"))),
+                    is_employee=int(bool(d.get("is_employee"))),
+                    has_verified_email=int(bool(d.get("has_verified_email"))),
+                    verified=int(bool(d.get("verified"))),
+                )
+                set_author_status(username, "active")
+                return
+            set_author_status(username, "unknown")  # 200 but odd shape
+            return
+        if sc == 404:
+            set_author_status(username, "deleted")   # self-deleted / never existed
+            return
+        if sc == 401 and USE_REDDIT_OAUTH:
+            try:
+                ensure_oauth_header(force=True)       # token expired mid-sweep; recheck later
+            except Exception:
+                pass
+    except Exception:
+        pass
+    set_author_status(username, "unknown")            # transient - leave for next pass
+
+
+def ensure_author_ages(authors):
+    """Fetch ages for any of these authors not already recorded. Called inline when
+    new authors are discovered during scraping (cached -> each author fetched once)."""
+    if not USE_REDDIT_OAUTH:
+        return 0
+    from export.database import get_author_ages
+    cand = {a for a in authors if a and a not in ("[deleted]", "AutoModerator")}
+    if not cand:
+        return 0
+    have = set(get_author_ages(cand).keys())  # already recorded (incl. null-age 404s)
+    todo = cand - have
+    for u in todo:
+        _fetch_one_author_age(u)
+    return len(todo)
+
+
+def author_age_backfill(max_authors=2000):
+    """Safety-net pass: fetch account age for any discovered author still missing one."""
+    from export.database import get_authors_needing_age
+    done = 0
+    while done < max_authors:
+        batch = get_authors_needing_age(limit=100)
+        if not batch:
+            break
+        for u in batch:
+            _fetch_one_author_age(u)
+            done += 1
+        print(f"   👤 author ages fetched: {done}")
+    return {"fetched": done}
+
+
+def author_status_revalidate(max_authors=500, stale_days=14):
+    """Re-check lifecycle status for stale/active authors, catching accounts deleted or
+    suspended AFTER we scraped them - the longitudinal half of the throwaway-pump signal
+    (active when they hyped a ticker, gone later). Prioritizes recently-active authors."""
+    if not USE_REDDIT_OAUTH:
+        return 0
+    from export.database import get_authors_needing_status_recheck
+    todo = get_authors_needing_status_recheck(limit=max_authors, stale_days=stale_days)
+    for u in todo:
+        _fetch_one_author_age(u)
+    if todo:
+        print(f"   🔁 Author status revalidated: {len(todo)}")
+    return len(todo)
+
+
+def _scheduler_heartbeat():
+    """Refresh the scheduler heartbeat from inside long-running work, so a long
+    update cycle doesn't look stale to the health check / scheduler_status tool.
+    No-op outside the scheduler (best-effort)."""
+    try:
+        from scheduler import control as _c
+        _c.write_status(heartbeat=_c.now_iso(), heartbeat_epoch=time.time())
+    except Exception:
+        pass
+
+
+def refresh_existing_comments(target, since_days=COMMENT_REFRESH_DAYS, dry_run=False):
+    """Smart comment refresh for already-stored threads (new comments on existing posts).
+
+    For stored posts in the last `since_days`, batch-check Reddit's current comment
+    count; re-fetch + upsert comments only for threads that gained comments (or that we
+    never fetched). Retrieval depth/filter follows the age policy: full tree for posts
+    still inside the new window, top up-voted comments (>=5) once mature.
+    """
+    from export.database import (get_posts_for_comment_refresh, save_comments_batch,
+                                 update_post_counts)
+    posts = get_posts_for_comment_refresh(target, since_days)
+    if not posts:
+        return {"checked": 0, "refreshed": 0, "new_comments": 0}
+
+    by_id = {p['id']: p for p in posts}
+    ids = list(by_id.keys())
+    refreshed = 0
+    new_comment_rows = 0
+
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
+        _scheduler_heartbeat()  # keep heartbeat fresh across a long refresh
+        meta = fetch_post_meta_batch(chunk)
+        for pid in chunk:
+            p = by_id[pid]
+            m = meta.get(pid)
+            if not m:
+                continue
+            current = m["num_comments"]
+            grew = current > (p.get("stored_num_comments") or 0)
+            missing = current > 0 and (p.get("stored_rows") or 0) == 0
+            if not (grew or missing):
+                continue  # unchanged thread — skip the expensive comment fetch
+
+            sort, depth, cmin = comment_fetch_policy(p.get("created_utc"))
+            comments = scrape_comments(p["permalink"], max_depth=depth,
+                                       sort=sort, score_min=cmin)
+            if comments and not dry_run:
+                try:
+                    from analytics.enrich import enrich_comments
+                    from export.database import save_ticker_mentions
+                    c_mentions = enrich_comments(comments, target)
+                    save_comments_batch(comments, pid, upsert=True)
+                    save_ticker_mentions(c_mentions)
+                    new_comment_rows += len(comments)
+                except Exception:
+                    pass
+            if not dry_run:
+                update_post_counts(pid, current, m.get("score"))
+            refreshed += 1
+            time.sleep(1)  # be polite to Reddit
+            _scheduler_heartbeat()  # bound heartbeat staleness to one refetch
+
+    print(f"   🔁 Comment refresh r/{target}: checked {len(ids)} threads, "
+          f"refreshed {refreshed}, +{new_comment_rows} comment rows")
+    return {"checked": len(ids), "refreshed": refreshed, "new_comments": new_comment_rows}
 
 # --- POST EXTRACTION ---
 def extract_post_data(post_json):
@@ -451,8 +736,9 @@ def extract_post_data(post_json):
     }
 
 # --- FULL HISTORY SCRAPE ---
-def run_full_history(target, limit, is_user=False, download_media_flag=True, 
-                     scrape_comments_flag=True, dry_run=False, use_plugins=False):
+def run_full_history(target, limit, is_user=False, download_media_flag=True,
+                     scrape_comments_flag=True, dry_run=False, use_plugins=False,
+                     max_age_days=None, comment_score_min=0, refresh=False):
     """
     Full scrape with images, videos, and comments.
     
@@ -489,10 +775,18 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
     except Exception as e:
         print(f"⚠️ Job tracking unavailable: {e}")
     
-    # Setup directories (even for dry run, to check existing data)
+    # Setup directories (media is written lazily; posts/comments go to the DB)
     dirs = setup_directories(target, prefix)
-    load_history(dirs["posts"])
-    
+    # Seed the dedup set from the DB (single source of truth).
+    SEEN_URLS.clear()
+    try:
+        from export.database import get_post_permalinks
+        SEEN_URLS.update(get_post_permalinks(target))
+        if SEEN_URLS:
+            print(f"📚 Loaded {len(SEEN_URLS)} existing items from database")
+    except Exception as e:
+        print(f"⚠️ Could not load history from DB: {e}")
+
     after = None
     total_posts = 0
     total_media = {"images": 0, "videos": 0}
@@ -501,18 +795,28 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
     all_scraped_comments = []
     start_time = time.time()
     error_msg = None
-    
+
+    # Optional time window: stop paginating once posts are older than the cutoff
+    # (the /new listing is reverse-chronological, so this bounds the backfill).
+    cutoff_dt = None
+    reached_cutoff = False
+    if max_age_days:
+        cutoff_dt = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
+        print(f"   🗓️  Time window: posts newer than {cutoff_dt.date()} ({max_age_days}d)")
+
     try:
-        while total_posts < limit:
+        while total_posts < limit and not reached_cutoff:
             random.shuffle(MIRRORS)
             success = False
             
             for base_url in MIRRORS:
                 try:
+                    # oauth.reddit.com listing endpoints don't use the .json suffix.
+                    suffix = "" if USE_REDDIT_OAUTH else ".json"
                     if is_user:
-                        path = f"/user/{target}/submitted.json"
+                        path = f"/user/{target}/submitted{suffix}"
                     else:
-                        path = f"/r/{target}/new.json"
+                        path = f"/r/{target}/new{suffix}"
                     
                     # Use proper batch size - min of remaining posts needed or 100 (Reddit's max per request)
                     batch_size = min(100, limit - total_posts)
@@ -534,10 +838,20 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
                         for child in children:
                             p = child['data']
                             post = extract_post_data(p)
-                            
-                            if post['permalink'] in SEEN_URLS:
+
+                            # Stop once we pass the time window (reverse-chronological feed).
+                            if cutoff_dt:
+                                try:
+                                    if datetime.datetime.fromisoformat(post['created_utc']) < cutoff_dt:
+                                        reached_cutoff = True
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+
+                            # In refresh mode, re-process seen posts to update them.
+                            if not refresh and post['permalink'] in SEEN_URLS:
                                 continue
-                            
+
                             # Download media (skip in dry run)
                             if download_media_flag and not dry_run:
                                 downloaded = download_post_media(p, dirs, post['id'])
@@ -549,26 +863,60 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
                                     print(f"   + Downloaded: {downloaded['images']} images, {downloaded['videos']} videos")
                             
                             posts.append(post)
-                            
-                            # Scrape comments
-                            if scrape_comments_flag and post['num_comments'] > 0:
-                                print(f"   💬 Fetching comments for: {post['title'][:40]}...")
-                                comments = scrape_comments(post['permalink'])
+
+                            # Fetch comments for NEWLY-DISCOVERED posts using the
+                            # age-aware policy (full tree while new). Already-stored
+                            # threads get their new comments via the separate smart
+                            # refresh pass, so we don't re-fetch them here.
+                            is_new_post = post['permalink'] not in SEEN_URLS
+                            if (scrape_comments_flag and post['num_comments'] > 0
+                                    and is_new_post):
+                                sort, depth, policy_cmin = comment_fetch_policy(post['created_utc'])
+                                cmin = max(policy_cmin, comment_score_min)  # explicit arg can only tighten
+                                kind = "full" if sort is None else f"top>={cmin}"
+                                print(f"   💬 Fetching comments ({kind}) for: {post['title'][:40]}...")
+                                comments = scrape_comments(post['permalink'], max_depth=depth,
+                                                           sort=sort, score_min=cmin)
                                 batch_comments.extend(comments)
                                 total_comments += len(comments)
+                                # Enrich (sentiment + tickers) then persist to the DB.
+                                if not dry_run and comments:
+                                    try:
+                                        from analytics.enrich import enrich_comments
+                                        from export.database import save_comments_batch, save_ticker_mentions
+                                        c_mentions = enrich_comments(comments, target)
+                                        save_comments_batch(comments, post['id'], upsert=refresh)
+                                        save_ticker_mentions(c_mentions)
+                                    except Exception as e:
+                                        print(f"   ⚠️ Comment enrich/save failed: {e}")
                                 time.sleep(1)
                         
                         # Collect for plugins
                         all_scraped_posts.extend(posts)
                         all_scraped_comments.extend(batch_comments)
                         
-                        # Save data (skip in dry run)
+                        # Save data to the SQLite DB only (single source of truth)
                         if not dry_run:
-                            saved = save_posts_csv(posts, dirs["posts"])
+                            try:
+                                from analytics.enrich import enrich_posts
+                                from export.database import save_posts_batch, save_ticker_mentions
+                                p_mentions = enrich_posts(posts, target)
+                                saved = save_posts_batch(posts, target, upsert=refresh)
+                                save_ticker_mentions(p_mentions)
+                            except Exception as e:
+                                print(f"   ⚠️ DB save (posts) failed: {e}")
+                                saved = 0
                             total_posts += saved
-                            
-                            if batch_comments:
-                                save_comments_csv(batch_comments, dirs["comments"])
+                            # Track these permalinks so later batches dedupe correctly.
+                            for p in posts:
+                                SEEN_URLS.add(p['permalink'])
+                            print(f"✅ Saved {saved} new posts to DB")
+                            # Always fetch account age for newly-discovered authors (cached).
+                            try:
+                                ensure_author_ages({p.get('author') for p in posts}
+                                                   | {c.get('author') for c in batch_comments})
+                            except Exception:
+                                pass
                         else:
                             # In dry run, just count
                             total_posts += len(posts)
@@ -577,6 +925,7 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
                         print(f"\n📊 Progress: {total_posts}/{limit} posts")
                         print(f"   🖼️  Images: {total_media['images']} | 🎬 Videos: {total_media['videos']}")
                         print(f"   💬 Comments: {total_comments}")
+                        _scheduler_heartbeat()  # keep heartbeat fresh during long /new pass
                         
                         after = data['data'].get('after')
                         if not after:
@@ -621,7 +970,18 @@ def run_full_history(target, limit, is_user=False, download_media_flag=True,
         print(f"\n❌ Scrape error: {e}")
     
     duration = time.time() - start_time
-    
+
+    # Update subreddit tracking (last_scraped + totals) for subreddit scrapes.
+    if not dry_run and not is_user and total_posts > 0:
+        try:
+            from export.database import update_subreddit_tracking
+            update_subreddit_tracking(
+                target, total_posts, total_comments,
+                total_media['images'] + total_media['videos']
+            )
+        except Exception as e:
+            print(f"⚠️ Subreddit tracking update failed: {e}")
+
     # Complete job tracking
     if job_id:
         try:
@@ -757,6 +1117,28 @@ Commands:
     parser.add_argument("--mode", choices=["monitor", "history", "full"], default="full")
     parser.add_argument("--user", action="store_true", help="Target is a user")
     parser.add_argument("--limit", type=int, default=100, help="Max posts to scrape")
+    parser.add_argument("--max-age-days", type=int, default=None,
+                        help="Only scrape posts newer than N days (e.g. 30 for the last month)")
+    parser.add_argument("--comment-score-min", type=int, default=0,
+                        help="Only fetch comments for posts with score >= N (0 = all posts)")
+    parser.add_argument("--refresh", action="store_true",
+                        help="Re-fetch posts already stored and update their scores/comments (upsert)")
+    parser.add_argument("--update-all", action="store_true",
+                        help="Incrementally update every tracked subreddit in the DB")
+    parser.add_argument("--enrich-backfill", action="store_true",
+                        help="Backfill sentiment + ticker mentions + FTS over existing rows")
+    parser.add_argument("--embed-backfill", action="store_true",
+                        help="Embed any posts lacking a vector (semantic search)")
+    parser.add_argument("--author-age-backfill", action="store_true",
+                        help="Fetch + store account age for authors (coordination signal)")
+    parser.add_argument("--price-backfill", action="store_true",
+                        help="Fetch EOD prices for tracked tickers (hit-rate validation)")
+    parser.add_argument("--author-status-revalidate", action="store_true",
+                        help="Re-check author lifecycle status (deleted/suspended = pump signal)")
+    parser.add_argument("--archive-backfill", action="store_true",
+                        help="Deep historical backfill via arctic-shift (past Reddit's 1000-post cap)")
+    parser.add_argument("--archive-comment-backfill", action="store_true",
+                        help="Historical comments for stored ticker/megathread posts via arctic-shift")
     parser.add_argument("--no-media", action="store_true", help="Skip media download")
     parser.add_argument("--no-comments", action="store_true", help="Skip comments")
     
@@ -793,16 +1175,31 @@ Commands:
     parser.add_argument("--vacuum", action="store_true", help="Optimize SQLite database")
     parser.add_argument("--export-parquet", type=str, help="Export subreddit to Parquet format")
     parser.add_argument("--api", action="store_true", help="Start REST API server (port 8000)")
+    parser.add_argument("--mcp", action="store_true", help="Start MCP server (streamable-HTTP, port 8765)")
     parser.add_argument("--proxy", type=str, help="Proxy URL (e.g. http://username:password@host:port)")
     parser.add_argument("--proxy-country", type=str, help="Target country code for ScrapingAnt proxies (e.g. US, IN)")
     parser.add_argument("--proxy-session", type=str, help="Persistent session ID for ScrapingAnt proxies")
     parser.add_argument("--no-proxy-rotate", action="store_true", help="Disable automatic session rotation")
     
     args = parser.parse_args()
-    
-    # Configure Proxy
+
+    # Reddit Official API (OAuth): use oauth.reddit.com and go direct (the public
+    # mirrors / scraping proxies are unnecessary and Reddit blocks them).
+    global MIRRORS
+    if USE_REDDIT_OAUTH:
+        MIRRORS = ["https://oauth.reddit.com"]
+        SESSION.headers["User-Agent"] = REDDIT_USER_AGENT
+        grant = "password (script app)" if (REDDIT_USERNAME and REDDIT_PASSWORD) else "client_credentials (app-only)"
+        print(f"🔑 Using Reddit Official API (OAuth) - grant: {grant}")
+        try:
+            ensure_oauth_header()
+            print("   ✅ OAuth token acquired")
+        except Exception as e:
+            print(f"   ❌ OAuth token failed: {e}")
+
+    # Configure Proxy (skipped in OAuth mode - direct connection to oauth.reddit.com)
     global PROXY_TO_USE
-    PROXY_TO_USE = args.proxy if args.proxy is not None else PROXY_URL
+    PROXY_TO_USE = "" if USE_REDDIT_OAUTH else (args.proxy if args.proxy is not None else PROXY_URL)
     
     # Apply CLI overrides to configuration if provided
     if args.proxy_country:
@@ -818,7 +1215,12 @@ Commands:
     if PROXY_TO_USE and PROXY_TO_USE.lower() not in ["none", "direct", "disabled", ""]:
         # Do initial proxy rotation/setup
         rotate_session_proxy(force_rotate=False)
-        
+
+        # ScrapingAnt's HTTPS proxy tunnel requires disabling SSL verification
+        # (the InsecureRequestWarning is already suppressed at module load).
+        if "scrapingant" in PROXY_TO_USE.lower():
+            SESSION.verify = False
+
         try:
             current_proxy = SESSION.proxies.get("https", PROXY_TO_USE)
             parsed = urlparse(current_proxy)
@@ -862,6 +1264,18 @@ Commands:
             uvicorn.run(app, host="0.0.0.0", port=8000)
         except ImportError:
             print("❌ Install dependencies: pip install fastapi uvicorn")
+        return
+
+    # MCP server mode
+    if args.mcp:
+        print("\n🧠 Starting MCP server (streamable-HTTP)...")
+        print("   🔌 Endpoint: http://localhost:8765/mcp  (Bearer-protected)")
+        print("   ❤️  Health:   http://localhost:8765/healthz")
+        try:
+            from mcp_server.server import run
+            run()
+        except ImportError as e:
+            print(f"❌ Install dependencies: pip install mcp httpx  ({e})")
         return
     
     # --- NEW: Maintenance & Observability Commands ---
@@ -956,7 +1370,201 @@ Commands:
         from scheduler.cron import run_scheduled
         run_scheduled(args.schedule, args.every, args.mode, args.limit, args.user)
         return
-    
+
+    # Enrich-backfill: sentiment + ticker mentions + FTS over existing rows.
+    if args.enrich_backfill:
+        print("🧠 Enriching existing rows (sentiment + tickers + FTS)...")
+        from analytics.enrich import enrich_backfill
+        enrich_backfill()
+        return
+
+    # Embed-backfill: vectorize posts for semantic search.
+    if args.embed_backfill:
+        print("🧬 Embedding posts (semantic search)...")
+        from analytics.embeddings import embed_backfill
+        embed_backfill()
+        return
+
+    # Author-age backfill: fetch account creation dates (coordination signal).
+    if args.author_age_backfill:
+        print("👤 Fetching author account ages...")
+        author_age_backfill()
+        return
+
+    # Price backfill: fetch EOD closes for tracked tickers (hit-rate validation).
+    if args.price_backfill:
+        print("💲 Fetching EOD prices for tracked tickers...")
+        from analytics.prices import price_backfill, tracked_tickers
+        print(price_backfill(tracked_tickers(min_mentions=3)))
+        return
+
+    # Author status revalidation: catch accounts deleted/suspended after we scraped them.
+    if args.author_status_revalidate:
+        print("🔁 Revalidating author lifecycle status...")
+        print(author_status_revalidate(max_authors=5000, stale_days=0))
+        return
+
+    # Archive backfill: deep historical posts via arctic-shift (past the /new cap).
+    if args.archive_backfill:
+        from scraper.archive import archive_backfill
+        from export.database import get_all_subreddits
+        days = args.max_age_days or 180
+        targets = [args.target] if args.target else [s["subreddit"] for s in get_all_subreddits()]
+        print(f"📜 Archive backfill ({days}d) for {len(targets)} subreddit(s)...")
+        grand = 0
+        for sub in targets:
+            try:
+                grand += archive_backfill(sub, extract_post_data, days=days)
+            except Exception as e:
+                print(f"   ⚠️ archive backfill failed for r/{sub}: {e}")
+        print(f"📜 Archive backfill complete: {grand} historical posts added")
+        return
+
+    # Archive COMMENT backfill: historical comments for stored ticker/megathread posts.
+    if args.archive_comment_backfill:
+        from scraper.archive import archive_comment_backfill
+        from export.database import get_all_subreddits
+        days = args.max_age_days or 180
+        targets = [args.target] if args.target else [s["subreddit"] for s in get_all_subreddits()]
+        print(f"💬 Archive comment backfill ({days}d) for {len(targets)} subreddit(s)...")
+        grand = 0
+        for sub in targets:
+            try:
+                grand += archive_comment_backfill(sub, days=days)
+            except Exception as e:
+                print(f"   ⚠️ comment backfill failed for r/{sub}: {e}")
+        print(f"💬 Archive comment backfill complete: {grand} historical comments added")
+        return
+
+    # Update-all mode: incrementally refresh every tracked subreddit in the DB.
+    # With --every N it loops continuously (used by the scheduler service).
+    if args.update_all:
+        from export.database import get_all_subreddits
+
+        def update_cycle():
+            subs = get_all_subreddits()
+            if not subs:
+                print("ℹ️  No tracked subreddits yet — scrape one first.")
+                return
+            print(f"🔄 Updating {len(subs)} subreddit(s): {', '.join(s['subreddit'] for s in subs)}")
+            for s in subs:
+                name = s['subreddit']
+                print(f"\n=== Updating r/{name} ===")
+                try:
+                    run_full_history(
+                        name, args.limit, is_user=False,
+                        download_media_flag=False,
+                        scrape_comments_flag=not args.no_comments,
+                        max_age_days=args.max_age_days,
+                        comment_score_min=args.comment_score_min,
+                        refresh=args.refresh,
+                    )
+                    # Capture new comments on EXISTING threads (smart change-detection,
+                    # age-aware retrieval) — the /new pass above only handles new posts.
+                    if not args.no_comments:
+                        refresh_existing_comments(name, since_days=COMMENT_REFRESH_DAYS)
+                except Exception as e:
+                    print(f"⚠️ Update failed for r/{name}: {e}")
+                _scheduler_heartbeat()  # heartbeat between subreddits
+            # Keep FTS fresh for edits/deletes (new inserts are indexed live by triggers).
+            try:
+                from export.database import rebuild_fts
+                rebuild_fts()
+            except Exception:
+                pass
+            # Embed any newly-scraped posts (incremental; cheap after the first cycle).
+            try:
+                from analytics.embeddings import embed_backfill
+                embed_backfill()
+            except Exception as e:
+                print(f"⚠️ Embed step skipped: {e}")
+            # Refresh the daily ticker rollups.
+            try:
+                from export.database import update_daily_stats
+                update_daily_stats()
+            except Exception:
+                pass
+            # Incrementally fetch account ages for newly-seen authors (rate-limited).
+            try:
+                author_age_backfill(max_authors=150)
+            except Exception as e:
+                print(f"⚠️ Author age step skipped: {e}")
+            # Re-check lifecycle status of recently-active authors (deleted/suspended =
+            # the pump-confirmation signal). Small batch per cycle so it stays cheap.
+            try:
+                author_status_revalidate(max_authors=150, stale_days=7)
+            except Exception as e:
+                print(f"⚠️ Author status step skipped: {e}")
+            # Fetch EOD prices for any newly-tracked tickers (hit-rate validation).
+            try:
+                from analytics.prices import price_backfill, tracked_tickers
+                price_backfill(tracked_tickers(min_mentions=3)[:60])
+            except Exception as e:
+                print(f"⚠️ Price step skipped: {e}")
+
+        if args.every:
+            from scheduler import control as sched_control
+
+            print(f"⏰ Continuous update every {args.every} min "
+                  f"(control file: {sched_control.CONTROL_PATH})")
+            # Initial heartbeat so health checks / status tools see liveness immediately.
+            sched_control.write_status(heartbeat=sched_control.now_iso(),
+                                       heartbeat_epoch=time.time(),
+                                       interval_minutes=args.every, enabled=True)
+            while True:
+                ctrl = sched_control.read_control()
+                enabled = ctrl.get("enabled", True)
+                interval = ctrl.get("interval_minutes") or args.every
+
+                if enabled:
+                    started = time.time()
+                    sched_control.write_status(last_run_started=sched_control.now_iso(),
+                                               heartbeat=sched_control.now_iso(),
+                                               heartbeat_epoch=started)
+                    ok = True
+                    try:
+                        update_cycle()
+                    except Exception as e:  # update_cycle guards per-sub, but be safe
+                        ok = False
+                        print(f"⚠️ Update cycle failed: {e}")
+                    sched_control.write_status(last_run_finished=sched_control.now_iso(),
+                                               last_run_ok=ok)
+                else:
+                    print("⏸️  Scheduler paused via control file — skipping this cycle.")
+
+                # Re-read interval after the cycle, then pick a RANDOM gap before the
+                # next cycle (uniform 15s..min(interval, 5min)) — avoids a robotic
+                # fixed cadence.
+                interval = sched_control.read_control().get("interval_minutes") or args.every
+                sleep_seconds = sched_control.pick_sleep_seconds(interval)
+                next_epoch = time.time() + sleep_seconds
+                sched_control.write_status(
+                    enabled=enabled, interval_minutes=interval,
+                    next_sleep_seconds=round(sleep_seconds, 1),
+                    next_run_iso=datetime.datetime.fromtimestamp(
+                        next_epoch, datetime.timezone.utc).isoformat(),
+                    next_run_epoch=next_epoch)
+                cap = sched_control.effective_max_gap_seconds(interval)
+                print(f"\n😴 Sleeping {sleep_seconds:.0f}s "
+                      f"(randomised {sched_control.MIN_GAP_SECONDS}s..{cap:.0f}s) "
+                      f"until next update cycle...")
+
+                # Interruptible sleep: wake every 5s to refresh the heartbeat and to
+                # pick up a changed interval / pause without waiting out the gap.
+                while time.time() < next_epoch:
+                    time.sleep(min(5, max(0.5, next_epoch - time.time())))
+                    sched_control.write_status(heartbeat=sched_control.now_iso(),
+                                               heartbeat_epoch=time.time())
+                    new_interval = sched_control.read_control().get("interval_minutes") or args.every
+                    if new_interval != interval:
+                        # Cadence changed mid-sleep — re-pick a random gap from now.
+                        interval = new_interval
+                        sleep_seconds = sched_control.pick_sleep_seconds(interval)
+                        next_epoch = time.time() + sleep_seconds
+        else:
+            update_cycle()
+        return
+
     # Regular scraping mode
     if not args.target:
         parser.print_help()
@@ -971,14 +1579,18 @@ Commands:
             run_monitor(args.target, args.user)
             time.sleep(300)
     elif args.mode == "history":
-        run_full_history(args.target, args.limit, args.user, 
+        run_full_history(args.target, args.limit, args.user,
                         download_media_flag=False, scrape_comments_flag=False,
-                        dry_run=args.dry_run, use_plugins=args.plugins)
+                        dry_run=args.dry_run, use_plugins=args.plugins,
+                        max_age_days=args.max_age_days,
+                        comment_score_min=args.comment_score_min, refresh=args.refresh)
     else:
         run_full_history(args.target, args.limit, args.user,
                         download_media_flag=not args.no_media,
                         scrape_comments_flag=not args.no_comments,
-                        dry_run=args.dry_run, use_plugins=args.plugins)
+                        dry_run=args.dry_run, use_plugins=args.plugins,
+                        max_age_days=args.max_age_days,
+                        comment_score_min=args.comment_score_min, refresh=args.refresh)
 
 if __name__ == "__main__":
     main()

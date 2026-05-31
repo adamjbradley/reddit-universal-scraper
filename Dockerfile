@@ -28,6 +28,7 @@ COPY scraper/ ./scraper/
 COPY search/ ./search/
 COPY plugins/ ./plugins/
 COPY api/ ./api/
+COPY mcp_server/ ./mcp_server/
 COPY docs/ ./docs/
 
 # Create data directory with subdirectories
@@ -36,7 +37,8 @@ RUN mkdir -p data/backups data/parquet
 # Expose ports
 # 8501 = Streamlit Dashboard
 # 8000 = REST API
-EXPOSE 8501 8000
+# 8765 = MCP Server (streamable-HTTP)
+EXPOSE 8501 8000 8765
 
 # Health check for API mode
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

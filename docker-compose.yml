@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 
 # Reddit Scraper Suite - Full Stack
 # Start with: docker-compose up -d
@@ -20,6 +20,9 @@ services:
     volumes:
       - ./data:/app/data
     command: ["--api"]
+    environment:
+      - VOYAGE_API_KEY=${VOYAGE_API_KEY:-}
+      - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -38,14 +41,84 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    # Override the image's default healthcheck (which probes :8000); Streamlit
+    # serves on :8501 with its own health endpoint.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
-  # Scheduled Scraper (optional - uncomment and configure)
-  # scheduler:
-  #   build: .
-  #   volumes:
-  #     - ./data:/app/data
-  #   command: ["--schedule", "python", "--every", "60"]
-  #   restart: unless-stopped
+  # MCP Server (remote AI access via streamable-HTTP, Bearer-protected)
+  mcp:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data
+    command: ["--mcp"]
+    environment:
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - API_BASE_URL=http://api:8000
+      - MCP_PORT=8765
+      # Proxy config for scrape subprocesses (sourced from host .env)
+      - PROXY_URL=${PROXY_URL:-}
+      - PROXY_COUNTRY=${PROXY_COUNTRY:-}
+      - PROXY_SESSION_ID=${PROXY_SESSION_ID:-}
+      - PROXY_AUTO_ROTATE=${PROXY_AUTO_ROTATE:-true}
+      # Reddit Official API (OAuth) - when set, scrapes use oauth.reddit.com
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
+      - REDDIT_USERNAME=${REDDIT_USERNAME:-}
+      - REDDIT_PASSWORD=${REDDIT_PASSWORD:-}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:reddit-universal-scraper:v1.0}
+      - VOYAGE_API_KEY=${VOYAGE_API_KEY:-}
+      - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Scheduler - continuously updates every tracked subreddit (incremental + refresh).
+  # The gap between cycles is RANDOMISED: uniform between 15s and the --every value,
+  # hard-capped at 5 min. With --every 5 that means a random 15s..5min between cycles.
+  # Each cycle: pulls new posts in the last 2 days (full comment tree), then a smart
+  # comment-refresh over threads from the last 14 days — re-fetching comments only for
+  # threads that gained them. Retrieval is age-aware: full tree for posts <48h old,
+  # top up-voted comments (>=5) once mature. --comment-score-min 0 = no score gate on
+  # which threads get comments (the age policy decides what to keep).
+  scheduler:
+    build: .
+    volumes:
+      - ./data:/app/data
+    command: ["--update-all", "--every", "5", "--limit", "300",
+              "--max-age-days", "2", "--comment-score-min", "0", "--refresh"]
+    environment:
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID:-}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET:-}
+      - REDDIT_USERNAME=${REDDIT_USERNAME:-}
+      - REDDIT_PASSWORD=${REDDIT_PASSWORD:-}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:reddit-universal-scraper:v1.0}
+      - VOYAGE_API_KEY=${VOYAGE_API_KEY:-}
+      - EMBED_MODEL=${EMBED_MODEL:-BAAI/bge-small-en-v1.5}
+    restart: unless-stopped
+    depends_on:
+      - api
+    # The scheduler runs no HTTP server, so the image's default :8000 probe always
+    # fails. Instead verify the loop's heartbeat in scheduler_status.json is fresh
+    # (written every ~30s). start_period covers a slow first cycle.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,time,sys; s=json.load(open('/app/data/scheduler_status.json')); sys.exit(0 if time.time()-s.get('heartbeat_epoch',0) < 600 else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
 
 # Optional: Add Metabase for data visualization
 # Uncomment to enable
