@@ -11,8 +11,16 @@ on FX/index CFDs.
 ## Files
 | File | Role |
 |---|---|
-| `SignalClient.mqh` | Shared include — fetch/parse the feed + position helpers. Reused by every EA. |
-| `RedditMacro_EA.mq5` | Strategy-selectable EA. Set `StrategyTag` to the strategy to trade. |
+| `SignalClient.mqh` | Shared include — fetch/parse the feed + position helpers. |
+| `RedditMacro_EA.mq5` | The EA. **One file, two modes** (auto-detected): LIVE polls the `/signals` feed; in the **Strategy Tester** (where `WebRequest` is disabled) it reads capitulation dates from a CSV and trades them offline. |
+| `RedditMacro_Tester.ini` | Strategy-Tester config (instrument, D1, model, dates, inputs). |
+
+### Live vs Tester (automatic)
+`RedditMacro_EA` checks `MQLInfoInteger(MQL_TESTER)`:
+- **Live** → `WebRequest` the feed, mirror the `retail_fear` basket across the mapped CFDs.
+- **Tester** → no WebRequest; read `Common\Files\rrai_capitulation.csv` (export via
+  `python main.py --export-signals`) and trade those dates on the chart symbol. Use
+  `RedditMacro_Tester.ini` (AUDJPY, D1, "Open prices only").
 
 ## Why only one strategy trades
 Macro R&D (`backtest/macro_research.py`) benchmarked every candidate against **buy-and-hold**
