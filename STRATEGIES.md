@@ -167,6 +167,13 @@ The deep-history backfill let us test across regimes — the result that actuall
   OpEx week underperforms. Generic equity-flow seasonality → useful as *overlays/filters*, not Reddit alpha.
 - **AU sentiment track** building (`au_aggregate_daily`, post-level) to test AU-sentiment → AUDJPY.
 
+## Update — complete-data confirmation (2026-06-01)
+- US backfill finished: continuous 2020-2026 (2,344 days, 341 capitulation days). **Capitulation-long
+  multi-regime result HOLDS on the complete series** — AUDJPY positive every year incl. 2022 bear (win 60-83%).
+- `smallcap_pump_fade` is strong (+12.4% excess short, win 77%) but **only 2025-26 data exists** (n=87) —
+  no historical penny-stock prices/features, so it **can't be multi-regime validated** → stays ADVISORY,
+  NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
+
 ## Changelog
 - **2026-06-01** — Instrument scan (17 MT5 instruments). `retail_fear` generalises across the
   risk-on basket; commodities express it best (Silver +2.2pp lumpy, Gold +0.6pp robust), AUDJPY
