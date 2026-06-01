@@ -118,6 +118,101 @@ def _strategy_signals(name, st):
     return []
 
 
+# --- advisory SCREENS: every other idea, served as tagged signals (NOT auto-traded) ---
+_UNIV = None
+
+
+def _univ():
+    global _UNIV
+    if _UNIV is None:
+        try:
+            from backtest.sectors import universes
+            _UNIV = universes()
+        except Exception:
+            _UNIV = {}
+    return _UNIV
+
+
+def _recent_feat(where, days=4, limit=40):
+    conn = get_connection()
+    rows = conn.execute(f"""SELECT ticker, date, mentions, breadth, per_author, concentration,
+                                   mentions_z, sentiment, young_frac, gone_frac
+                            FROM feature_daily
+                            WHERE date >= date((SELECT MAX(date) FROM feature_daily), ?) AND {where}
+                            ORDER BY date DESC, mentions_z DESC LIMIT ?""",
+                        (f'-{days} days', limit)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def _screen_smallcap_fade():
+    u = _univ().get("smallcap", set())
+    return [{"symbol": r["ticker"], "side": "short", "per_author": r["per_author"],
+             "mentions": r["mentions"], "date": r["date"],
+             "reason": "small-cap concentrated pump -> fade (validated t=-3.93)"}
+            for r in _recent_feat("per_author>=3 AND mentions>=8") if r["ticker"] in u][:12]
+
+
+def _screen_biotech():
+    u = _univ().get("biotech", set())
+    return [{"symbol": r["ticker"], "side": "long", "per_author": r["per_author"], "date": r["date"],
+             "reason": "biotech catalyst hype (fat-tailed lottery; size small)"}
+            for r in _recent_feat("per_author>=2.5 AND mentions>=5", limit=60) if r["ticker"] in u][:8]
+
+
+def _screen_attention_fade():
+    return [{"symbol": r["ticker"], "side": "short", "mentions_z": r["mentions_z"], "date": r["date"],
+             "reason": "broad attention spike -> mean-reverts down (organic_long was a loser)"}
+            for r in _recent_feat("mentions_z>=2.5 AND concentration<=0.15 AND breadth>=8")][:10]
+
+
+def _screen_fresh_pump():
+    try:
+        from export.database import fresh_pump_suspects
+        return [{"symbol": r["ticker"], "side": "avoid/fade", "fresh": r["fresh"],
+                 "per_author": r["per_author"], "young_frac": r["young_frac"],
+                 "reason": "fresh concentrated burst (catch within hours)"}
+                for r in fresh_pump_suspects(limit=10)]
+    except Exception:
+        return []
+
+
+def _screen_coordination():
+    try:
+        from analytics.graph import suspected_coordination
+        r = suspected_coordination(window_hours=72)
+        items = r if isinstance(r, list) else (r.get("flagged") or r.get("suspected") or r.get("results") or [])
+        out = []
+        for x in items[:10]:
+            tk = x.get("ticker") if isinstance(x, dict) else x
+            if tk:
+                out.append({"symbol": tk, "side": "avoid", "reason": "suspected coordinated pushing"})
+        return out
+    except Exception:
+        return []
+
+
+def _calendar_overlay():
+    import datetime as _dt
+    d = _dt.date.today()
+    tom = d.day <= 3 or d.day >= 26          # turn-of-month (equity flow)
+    weak = d.month in (2, 3, 9)              # historically weak months
+    bias = "risk-off tilt" if weak else ("risk-on tilt" if tom else "neutral")
+    return [{"flag": "turn_of_month" if tom else "mid_month", "month": d.strftime("%b"),
+             "seasonal": "weak" if weak else "ok", "bias": bias,
+             "reason": "equity seasonality overlay (turn-of-month +; Feb/Mar/Sep weak)"}]
+
+
+SCREENS = [
+    {"name": "smallcap_pump_fade", "category": "equity",       "status": "validated(t=-3.93)",    "tradeable": False, "gen": _screen_smallcap_fade},
+    {"name": "fresh_pump_alert",   "category": "manipulation", "status": "live-screen",           "tradeable": False, "gen": _screen_fresh_pump},
+    {"name": "coordination_flag",  "category": "manipulation", "status": "screen",                "tradeable": False, "gen": _screen_coordination},
+    {"name": "biotech_catalyst",   "category": "equity",       "status": "experimental(lottery)", "tradeable": False, "gen": _screen_biotech},
+    {"name": "attention_fade",     "category": "equity",       "status": "research",              "tradeable": False, "gen": _screen_attention_fade},
+    {"name": "calendar_overlay",   "category": "seasonality",  "status": "advisory",              "tradeable": False, "gen": _calendar_overlay},
+]
+
+
 def current_signals(watchlist=True, force=False):
     """Multi-strategy live payload. Each strategy carries its status + actionable signals.
     force=True simulates an active capitulation signal (for end-to-end EA testing when the
@@ -132,21 +227,26 @@ def current_signals(watchlist=True, force=False):
     for sdef in STRATEGIES:
         sigs = _strategy_signals(sdef["name"], st) if sdef["enabled"] else []
         strategies.append({**sdef, "signals": sigs})
+    screens = []
+    if watchlist:
+        for sdef in SCREENS:
+            try:
+                inst = sdef["gen"]()
+            except Exception:
+                inst = []
+            screens.append({"name": sdef["name"], "category": sdef["category"],
+                            "status": sdef["status"], "tradeable": sdef["tradeable"], "signals": inst})
     payload = {
         "as_of": st["as_of"],
         "market": {"rrai_pct": st["rrai_pct"], "vix": st["vix"],
                    "capitulation_active": st["active"], "euphoria": st.get("euphoria", False),
                    "spx_trend": _trend("US500"), "strength": st["strength"]},
-        "strategies": strategies,
-        "disclaimer": "Phase-0 preliminary: single ~12mo regime, small n, overlapping windows; "
-                      "edge is a modest timing tilt over buy-and-hold (~0.2-0.5pp/10d).",
+        "strategies": strategies,   # TRADEABLE (auto-trade): retail_fear, euphoria_short
+        "screens": screens,         # advisory / watch - NOT auto-traded (status-tagged)
+        "disclaimer": "Only `strategies` are auto-tradeable (retail_fear validated multi-regime). "
+                      "`screens` are advisory/research - tagged by status, not auto-traded. "
+                      "All preliminary: small n, overlapping windows.",
     }
-    if watchlist:
-        try:
-            from export.database import pump_suspects
-            payload["watchlist_pump_suspects"] = pump_suspects(window_days=14, min_mentions=10, limit=10)
-        except Exception:
-            payload["watchlist_pump_suspects"] = []
     return payload
 
 
