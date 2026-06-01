@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import time
 
 import markdown
 
@@ -68,10 +69,25 @@ def main():
     if not browser:
         print("No Edge/Chrome found; wrote STRATEGIES.html only.")
         return 1
+    if PDF.exists():
+        PDF.unlink()
     subprocess.run([browser, "--headless", "--disable-gpu", "--no-pdf-header-footer",
                     f"--print-to-pdf={PDF}", HTML.as_uri()], check=False)
+    # Headless Edge writes the PDF asynchronously; wait until its size stabilises before
+    # deleting the HTML, or the render gets truncated (a tiny/blank PDF).
+    last, stable = -1, 0
+    for _ in range(40):  # up to ~8s
+        time.sleep(0.2)
+        size = PDF.stat().st_size if PDF.exists() else 0
+        if size > 0 and size == last:
+            stable += 1
+            if stable >= 3:
+                break
+        else:
+            stable = 0
+        last = size
     HTML.unlink(missing_ok=True)
-    ok = PDF.exists()
+    ok = PDF.exists() and PDF.stat().st_size > 0
     print(f"{'wrote' if ok else 'FAILED'} {PDF}" + (f" ({PDF.stat().st_size:,} bytes)" if ok else ""))
     return 0 if ok else 1
 
