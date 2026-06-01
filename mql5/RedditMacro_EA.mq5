@@ -165,4 +165,37 @@ void OnTick()
       if(trade.Buy(lots, _Symbol)) g_entry = day;
    }
 }
+
+//==================== TESTER: write results to a file on completion ====================
+// Called once at the end of a Strategy Tester pass. Writes the key stats to
+// Common\Files\rrai_tester_result.txt so they can be read back outside MT5.
+double OnTester()
+{
+   int trades = (int)TesterStatistics(STAT_TRADES);
+   int wins   = (int)TesterStatistics(STAT_PROFIT_TRADES);
+   double winrate = (trades > 0) ? 100.0 * wins / trades : 0.0;
+   int h = FileOpen("rrai_tester_result.txt", FILE_COMMON | FILE_WRITE | FILE_TXT | FILE_ANSI);
+   if(h != INVALID_HANDLE)
+   {
+      FileWrite(h, "symbol=" + _Symbol);
+      FileWrite(h, "period=" + EnumToString((ENUM_TIMEFRAMES)_Period));
+      FileWrite(h, "signals_loaded=" + IntegerToString(g_sn));
+      FileWrite(h, "trades=" + IntegerToString(trades));
+      FileWrite(h, "win_rate_pct=" + DoubleToString(winrate, 1));
+      FileWrite(h, "net_profit=" + DoubleToString(TesterStatistics(STAT_PROFIT), 2));
+      FileWrite(h, "gross_profit=" + DoubleToString(TesterStatistics(STAT_GROSS_PROFIT), 2));
+      FileWrite(h, "gross_loss=" + DoubleToString(TesterStatistics(STAT_GROSS_LOSS), 2));
+      FileWrite(h, "profit_factor=" + DoubleToString(TesterStatistics(STAT_PROFIT_FACTOR), 2));
+      FileWrite(h, "expected_payoff=" + DoubleToString(TesterStatistics(STAT_EXPECTED_PAYOFF), 2));
+      FileWrite(h, "max_equity_dd_pct=" + DoubleToString(TesterStatistics(STAT_EQUITYDD_PERCENT), 2));
+      FileWrite(h, "sharpe=" + DoubleToString(TesterStatistics(STAT_SHARPE_RATIO), 2));
+      FileWrite(h, "recovery_factor=" + DoubleToString(TesterStatistics(STAT_RECOVERY_FACTOR), 2));
+      FileWrite(h, "initial_deposit=" + DoubleToString(TesterStatistics(STAT_INITIAL_DEPOSIT), 2));
+      FileClose(h);
+      Print("Tester results -> Common\\Files\\rrai_tester_result.txt");
+   }
+   else
+      Print("OnTester: could not write result file, err ", GetLastError());
+   return(0.0);
+}
 //+------------------------------------------------------------------+
