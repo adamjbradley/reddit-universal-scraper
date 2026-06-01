@@ -236,6 +236,18 @@ def analytics_pump_suspects(
     return pump_suspects(window_days=window_days, min_mentions=min_mentions, limit=limit)
 
 
+@app.get("/signals", tags=["Signals"])
+def signals_feed(format: str = Query("json", description="json | mt5")):
+    """Live actionable signals for execution clients. Currently serves the validated RRAI
+    capitulation overlay (buy risk - AUDJPY/index - when retail capitulates AND VIX>=18).
+    format=mt5 returns compact 'SYMBOL,SIDE,STRENGTH,HORIZON' lines for the MetaTrader EA."""
+    from analytics.signals import current_signals, as_mt5_lines
+    if format == "mt5":
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(as_mt5_lines())
+    return current_signals()
+
+
 # --- SEMANTIC SEARCH (embeddings) ---
 
 @app.get("/semantic_search", tags=["Semantic"])

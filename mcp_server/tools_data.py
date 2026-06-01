@@ -131,6 +131,16 @@ def register(mcp):
                              {"window_days": window_days, "min_mentions": min_mentions, "limit": top})
 
     @mcp.tool()
+    async def current_signals() -> dict:
+        """Live actionable trading signals. Serves the Phase-0-validated RRAI capitulation
+        overlay: when retail sentiment capitulates (RRAI percentile low) AND VIX confirms
+        genuine fear (>=18), go LONG risk - AUDJPY (best leg) + index (US500/USTEC) - for
+        ~10 days. Returns the current market state (rrai_pct, vix, capitulation_active),
+        any active signals with strength, and an informational pump-suspects watchlist
+        (NOT actionable - the equity pump book failed friction-aware backtesting)."""
+        return await api_get("/signals", {"format": "json"})
+
+    @mcp.tool()
     async def semantic_search(q: str, k: int = 10) -> dict:
         """Meaning-based search over posts (embeddings) — finds topically relevant posts
         even without the exact words. E.g. 'rate cut fears' or 'AI capex bull thesis'."""
