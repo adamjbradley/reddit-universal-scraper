@@ -1135,6 +1135,10 @@ Commands:
                         help="Fetch EOD prices for tracked tickers (hit-rate validation)")
     parser.add_argument("--author-status-revalidate", action="store_true",
                         help="Re-check author lifecycle status (deleted/suspended = pump signal)")
+    parser.add_argument("--build-features", action="store_true",
+                        help="Rebuild the point-in-time feature store (feature_daily + aggregate_daily)")
+    parser.add_argument("--backtest", action="store_true",
+                        help="Run the friction-aware event-study backtest over the feature store")
     parser.add_argument("--archive-backfill", action="store_true",
                         help="Deep historical backfill via arctic-shift (past Reddit's 1000-post cap)")
     parser.add_argument("--archive-comment-backfill", action="store_true",
@@ -1404,6 +1408,19 @@ Commands:
         print(author_status_revalidate(max_authors=5000, stale_days=0))
         return
 
+    # Feature store rebuild: point-in-time features for the signal framework.
+    if args.build_features:
+        print("🧮 Rebuilding point-in-time feature store...")
+        from analytics.features import build_all
+        print(build_all())
+        return
+
+    # Backtest: friction-aware event study over the feature store.
+    if args.backtest:
+        from backtest.engine import main as bt_main
+        bt_main()
+        return
+
     # Archive backfill: deep historical posts via arctic-shift (past the /new cap).
     if args.archive_backfill:
         from scraper.archive import archive_backfill
@@ -1501,6 +1518,19 @@ Commands:
                 price_backfill(tracked_tickers(min_mentions=3)[:60])
             except Exception as e:
                 print(f"⚠️ Price step skipped: {e}")
+            # Keep macro/overlay instruments fresh (index + risk-FX for the RRAI overlay).
+            try:
+                from analytics.prices import fetch_prices
+                for _m in ("SPY", "QQQ", "AUDJPY=X"):
+                    fetch_prices(_m)
+            except Exception as e:
+                print(f"⚠️ Macro price step skipped: {e}")
+            # Rebuild the point-in-time feature store (cheap; keeps signals current).
+            try:
+                from analytics.features import build_all
+                build_all()
+            except Exception as e:
+                print(f"⚠️ Feature-store step skipped: {e}")
 
         if args.every:
             from scheduler import control as sched_control

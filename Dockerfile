@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY config.py .
 COPY analytics/ ./analytics/
+COPY backtest/ ./backtest/
 COPY alerts/ ./alerts/
 COPY dashboard/ ./dashboard/
 COPY export/ ./export/
