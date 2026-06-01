@@ -81,31 +81,42 @@ def archive_backfill(subreddit, extract_fn, days=180, dry_run=False, max_pages=3
     return total
 
 
-def _flush_agg(rows):
+_AGG_COLS = """(date, total_mentions, tickers, authors, mkt_sent, bull_frac, bear_frac,
+                young_frac, gone_frac, froth, rrai_raw, rrai_pct)"""
+_AGG_DDL = """(date TEXT PRIMARY KEY, total_mentions INTEGER, tickers INTEGER, authors INTEGER,
+               mkt_sent REAL, bull_frac REAL, bear_frac REAL, young_frac REAL, gone_frac REAL,
+               froth INTEGER, rrai_raw REAL, rrai_pct REAL)"""
+
+
+def _flush_agg(rows, table="aggregate_daily"):
     if not rows:
         return
     conn = get_connection()
-    conn.executemany("""INSERT OR IGNORE INTO aggregate_daily
-        (date, total_mentions, tickers, authors, mkt_sent, bull_frac, bear_frac,
-         young_frac, gone_frac, froth, rrai_raw, rrai_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {table} {_AGG_DDL}")
+    conn.executemany(f"INSERT OR IGNORE INTO {table} {_AGG_COLS} VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     conn.commit()
     conn.close()
 
 
-def archive_aggregate_backfill(subreddits, start_date, end_date, posts_per_day=100, sleep=0.35):
-    """Extend the RRAI history WITHOUT storing raw posts (sidesteps the firehose size/speed
-    problem). For each day in [start, end), fetch up to `posts_per_day` posts per sub,
-    compute the day's MENTION-LEVEL sentiment aggregate (bull/bear fractions are sample-
-    invariant, so a daily sample estimates the day's retail risk-appetite), and write ONE
-    aggregate_daily row. total_mentions records the daily sample size for the thin-day guard
-    in recompute_rrai_pct(). Resumable: days already present are skipped. Returns days written.
+def archive_aggregate_backfill(subreddits, start_date, end_date, posts_per_day=100, sleep=0.35,
+                               post_level=False, table="aggregate_daily"):
+    """Extend a retail-sentiment history WITHOUT storing raw posts (sidesteps the firehose
+    size/speed problem). For each day in [start, end), fetch up to `posts_per_day` posts per
+    sub and write ONE aggregate row (bull/bear fractions are sample-invariant).
+
+    post_level=False: count only ticker-mentioning posts (the US RRAI). post_level=True:
+    count EVERY post's sentiment (for non-US subs whose tickers our US symbol list won't
+    match - e.g. ASX). `table` lets a parallel series (e.g. au_aggregate_daily) be built.
+    Resumable: days already present are skipped. Returns days written.
     """
     from analytics.sentiment_engine import score as _sentiment
     from analytics.tickers import extract_tickers
 
     conn = get_connection()
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {table} {_AGG_DDL}")
+    conn.commit()
     have = {r["date"] for r in conn.execute(
-        "SELECT date FROM aggregate_daily WHERE total_mentions IS NOT NULL").fetchall()}
+        f"SELECT date FROM {table} WHERE total_mentions IS NOT NULL").fetchall()}
     conn.close()
 
     start = datetime.date.fromisoformat(start_date)
@@ -122,13 +133,19 @@ def archive_aggregate_backfill(subreddits, start_date, end_date, posts_per_day=1
         for sub in subreddits:
             for p in _fetch(sub, a0, a0 + 86400 - 1, posts_per_day):
                 text = f"{p.get('title', '')} {p.get('selftext', '')}"
-                tickers = extract_tickers(text)
-                if not tickers:
-                    continue
-                s, _ = _sentiment(text)
-                if p.get("author"):
-                    authors.add(p["author"])
-                sents.extend([s] * len(tickers))   # one mention per ticker, post's sentiment
+                if post_level:
+                    s, _ = _sentiment(text)
+                    if p.get("author"):
+                        authors.add(p["author"])
+                    sents.append(s)                  # every post = one observation
+                else:
+                    tickers = extract_tickers(text)
+                    if not tickers:
+                        continue
+                    s, _ = _sentiment(text)
+                    if p.get("author"):
+                        authors.add(p["author"])
+                    sents.extend([s] * len(tickers))  # one mention per ticker
             time.sleep(sleep)
         n = len(sents)
         if n:
@@ -140,11 +157,11 @@ def archive_aggregate_backfill(subreddits, start_date, end_date, posts_per_day=1
             buf.append((ds, 0, None, len(authors), None, None, None, None, None, 0, None, None))
         written += 1
         if written % 60 == 0:
-            _flush_agg(buf); buf = []
-            print(f"   📈 aggregate history: {written} days (at {ds}, last n={n})")
+            _flush_agg(buf, table); buf = []
+            print(f"   📈 {table}: {written} days (at {ds}, last n={n})")
         day += datetime.timedelta(days=1)
-    _flush_agg(buf)
-    print(f"   📈 aggregate-history backfill: {written} days written ({start_date}..{end_date})")
+    _flush_agg(buf, table)
+    print(f"   📈 {table} backfill: {written} days written ({start_date}..{end_date})")
     return written
 
 

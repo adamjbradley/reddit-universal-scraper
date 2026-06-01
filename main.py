@@ -1149,6 +1149,10 @@ Commands:
                         help="Start date for --aggregate-history-backfill (YYYY-MM-DD)")
     parser.add_argument("--history-subs", type=str, default="wallstreetbets,stocks,pennystocks",
                         help="Comma-separated subs for --aggregate-history-backfill")
+    parser.add_argument("--history-post-level", action="store_true",
+                        help="Aggregate ALL posts' sentiment (non-US subs; no US ticker gating)")
+    parser.add_argument("--history-table", type=str, default="aggregate_daily",
+                        help="Target table for --aggregate-history-backfill (e.g. au_aggregate_daily)")
     parser.add_argument("--export-signals", action="store_true",
                         help="Export capitulation dates to data/rrai_capitulation.csv (MT5 tester)")
     parser.add_argument("--no-media", action="store_true", help="Skip media download")
@@ -1470,9 +1474,11 @@ Commands:
         # Iterate to today; already-present days (recent block + any done) are skipped, so
         # this fills exactly the historical gaps regardless of what's already stored.
         end = datetime.datetime.now().strftime("%Y-%m-%d")
-        print(f"📈 Aggregate-history backfill {args.history_start}..{end}  subs={subs}")
-        archive_aggregate_backfill(subs, args.history_start, end)
-        print(recompute_rrai_pct())
+        print(f"📈 Aggregate-history backfill {args.history_start}..{end}  subs={subs} "
+              f"table={args.history_table} post_level={args.history_post_level}")
+        archive_aggregate_backfill(subs, args.history_start, end,
+                                   post_level=args.history_post_level, table=args.history_table)
+        print(recompute_rrai_pct(table=args.history_table))
         return
 
     # Export capitulation dates for the MT5 Strategy Tester (Common\Files\rrai_capitulation.csv).

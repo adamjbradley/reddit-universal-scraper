@@ -196,8 +196,8 @@ def build_aggregate_daily(lookback_days=400):
     return len(out)
 
 
-def recompute_rrai_pct(win=90, min_hist=30, min_mentions=20):
-    """Recompute rrai_pct over the FULL aggregate_daily series (recent + deep history).
+def recompute_rrai_pct(win=90, min_hist=30, min_mentions=20, table="aggregate_daily"):
+    """Recompute rrai_pct over the FULL series (recent + deep history) for `table`.
     Trailing `win`-VALID-day percentile of rrai_raw. THIN-DAY GUARD: days whose sample size
     (total_mentions) is below min_mentions are too noisy to trust (Reddit participation was
     far lower in early years) -> rrai_pct=NULL and excluded from the trailing window, so a
@@ -206,8 +206,8 @@ def recompute_rrai_pct(win=90, min_hist=30, min_mentions=20):
     own recent era, not an absolute baseline."""
     conn = get_connection()
     cur = conn.cursor()
-    rows = cur.execute("""SELECT date, rrai_raw, total_mentions FROM aggregate_daily
-                          ORDER BY date""").fetchall()
+    rows = cur.execute(f"""SELECT date, rrai_raw, total_mentions FROM {table}
+                           ORDER BY date""").fetchall()
     valid = [(r["date"], r["rrai_raw"]) for r in rows
              if r["rrai_raw"] is not None and (r["total_mentions"] or 0) >= min_mentions]
     vals = [v for _, v in valid]
@@ -219,7 +219,7 @@ def recompute_rrai_pct(win=90, min_hist=30, min_mentions=20):
         updates.append((pct, date))
     valid_dates = {d for d, _ in valid}
     thin = [(None, r["date"]) for r in rows if r["date"] not in valid_dates]
-    cur.executemany("UPDATE aggregate_daily SET rrai_pct=? WHERE date=?", updates + thin)
+    cur.executemany(f"UPDATE {table} SET rrai_pct=? WHERE date=?", updates + thin)
     conn.commit()
     conn.close()
     return {"valid_days": len(valid), "thin_or_null_days": len(thin)}
