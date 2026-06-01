@@ -41,7 +41,7 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 | `/signals` feed (multi-strategy, json\|mt5) | ✅ Done | strategy-tagged; live, currently **flat** |
 | Macro strategy R&D (`backtest/macro_research.py`) | ✅ Done | only `retail_fear` beats buy-&-hold; momentum/froth no edge |
 | MT5 framework (`SignalClient.mqh` + `RedditMacro_EA.mq5`) | ✅ Done | strategy-selectable thin client; demo-only |
-| Author profiling coverage | 🔄 8% | 3,823 / 47,625; 184 gone (116 del / 68 susp); target ~40% |
+| Author profiling coverage | 🔄 8.7% | 4,143 / 47,742; 184 gone (116 del / 68 susp); target ~40% |
 | Deletion-gated short testability | 🔄 Surfacing | `gone_frac>0` in 267 feature rows; too sparse to trade yet |
 | Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
 | Equity/options paper client (Alpaca) | 💡 Planned | not started |
