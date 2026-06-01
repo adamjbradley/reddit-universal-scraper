@@ -20,23 +20,24 @@
 #include <Trade/Trade.mqh>
 #include "SignalClient.mqh"
 
-// --- common ---
-input double BaseLots        = 0.10;
-input int    MaxHoldDays     = 10;               // hold / horizon (both modes)
-input int    MagicNumber     = 770077;
-// --- LIVE mode (ignored in the Strategy Tester) ---
-input string SignalsUrl      = "http://YOUR_HOST:8000/signals?format=mt5";
-input string AuthBearerToken = "";
-input string StrategyTag     = "retail_fear";
-input int    PollSeconds     = 300;
-input bool   ScaleByStrength = true;
-input string AudJpySymbol    = "AUDJPY";         // feed "AUDJPY"
-input string GoldSymbol      = "XAUUSD";         // feed "XAUUSD"
-input string IndexSymbol     = "US500";          // feed "US500"
-input string TechSymbol      = "USTEC";          // feed "USTEC"
-input string SilverSymbol    = "XAGUSD";         // feed "XAGUSD"
-// --- STRATEGY-TESTER mode (ignored live) ---
-input string SignalFile      = "rrai_capitulation.csv";   // Common\Files; dates YYYY.MM.DD
+// NOTE: the text after each input is its DISPLAY LABEL in MT5 (it replaces the variable name).
+// --- common (both modes) ---
+input double BaseLots        = 0.10;            // Lots per position
+input int    MaxHoldDays     = 10;              // Max hold (days)
+input int    MagicNumber     = 770077;          // Magic number
+// --- Strategy-Tester mode (THIS is what the Tester uses) ---
+input string SignalFile      = "rrai_capitulation.csv";        // TESTER signal CSV (Common Files)
+// --- Live mode (ignored in the Strategy Tester) ---
+input string SignalsUrl      = "http://YOUR_HOST:8000/signals?format=mt5";  // LIVE feed URL
+input string AuthBearerToken = "";              // LIVE bearer token (optional)
+input string StrategyTag     = "retail_fear";   // LIVE strategy to trade
+input int    PollSeconds     = 300;             // LIVE poll interval sec
+input bool   ScaleByStrength = true;            // LIVE scale lots by strength
+input string AudJpySymbol    = "AUDJPY";        // LIVE broker symbol for AUDJPY
+input string GoldSymbol      = "XAUUSD";        // LIVE broker symbol for Gold
+input string IndexSymbol     = "US500";         // LIVE broker symbol for SP500
+input string TechSymbol      = "USTEC";         // LIVE broker symbol for Nasdaq
+input string SilverSymbol    = "XAGUSD";        // LIVE broker symbol for Silver
 
 CTrade        trade;
 CSignalClient client;
