@@ -139,6 +139,23 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 
 ---
 
+## Session findings — sector / calendar / latency (2026-06-01)
+- **Sector segmentation rescues the pump signal** (`backtest/sectors.py`). The broad pump was a
+  wash because it *mixed opposites*: **small-cap concentrated pumps FADE** (−14.6%/10d excess,
+  win 22%, **t=−3.93** — pump-and-dumps reliably reverse → a short/avoid), while **biotech pumps
+  are a fat-tailed lottery** (+66% mean, win 48%, t=2.23 — a few catalyst moonshots). Thematic
+  universes (ai/quantum/space/nuclear/meme/frontier) had too few concentrated-pump events to judge.
+- **Pump detection is TOO SLOW** (`feature_daily`). Median `novelty_days` at flag = **152**; only
+  **1%** of pumps flagged within 3 days. Root cause: the `min_total>=20` universe filter + trailing
+  z-windows mean a ticker must accumulate ~20 mentions before it's even eligible → we catch
+  *established-ticker spikes*, not fresh pump-and-dumps. Only **33 fresh day-0 bursts** exist in the
+  data. **Fix:** a fresh-burst fast-path that scans raw mentions (ticker's first day with a burst),
+  bypassing the 20-mention gate — for LIVE catching, not just post-hoc.
+- **Calendar effects (10y, SPY/QQQ/Gold; absent in AUDJPY-FX):** turn-of-month is real
+  (SPY +0.49 vs +0.20%/5d, QQQ +0.58 vs +0.35, Gold +0.38 vs +0.25); September weak (−0.2%);
+  OpEx week underperforms. Generic equity-flow seasonality → useful as *overlays/filters*, not Reddit alpha.
+- **AU sentiment track** building (`au_aggregate_daily`, post-level) to test AU-sentiment → AUDJPY.
+
 ## Changelog
 - **2026-06-01** — Instrument scan (17 MT5 instruments). `retail_fear` generalises across the
   risk-on basket; commodities express it best (Silver +2.2pp lumpy, Gold +0.6pp robust), AUDJPY
