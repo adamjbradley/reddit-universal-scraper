@@ -1149,6 +1149,8 @@ Commands:
                         help="Start date for --aggregate-history-backfill (YYYY-MM-DD)")
     parser.add_argument("--history-subs", type=str, default="wallstreetbets,stocks,pennystocks",
                         help="Comma-separated subs for --aggregate-history-backfill")
+    parser.add_argument("--export-signals", action="store_true",
+                        help="Export capitulation dates to data/rrai_capitulation.csv (MT5 tester)")
     parser.add_argument("--no-media", action="store_true", help="Skip media download")
     parser.add_argument("--no-comments", action="store_true", help="Skip comments")
     
@@ -1471,6 +1473,17 @@ Commands:
         print(f"📈 Aggregate-history backfill {args.history_start}..{end}  subs={subs}")
         archive_aggregate_backfill(subs, args.history_start, end)
         print(recompute_rrai_pct())
+        return
+
+    # Export capitulation dates for the MT5 Strategy Tester (Common\Files\rrai_capitulation.csv).
+    if args.export_signals:
+        from export.database import get_connection as _gc
+        dates = [r["date"][:10].replace("-", ".") for r in _gc().execute(
+            "SELECT date FROM aggregate_daily WHERE rrai_pct<=0.15 ORDER BY date").fetchall()]
+        with open("data/rrai_capitulation.csv", "w") as f:
+            f.write("\n".join(dates) + "\n")
+        print(f"Exported {len(dates)} capitulation dates -> data/rrai_capitulation.csv"
+              + (f" ({dates[0]}..{dates[-1]})" if dates else ""))
         return
 
     # Update-all mode: incrementally refresh every tracked subreddit in the DB.
