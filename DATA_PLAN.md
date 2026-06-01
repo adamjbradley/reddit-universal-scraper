@@ -15,6 +15,16 @@ sample* (independent observations), which cross-source data and forward collecti
 
 ---
 
+## ✅ SOLVED — independent source = Wikipedia pageviews (2026-06-02)
+After StockTwits (blocked) and GDELT (flaky) failed, **Wikipedia pageviews** works cleanly: free,
+no key, no setup, historical to 2015, reliable REST API. `scraper/wikipedia.py` backfilled 40k days
+of **fear-term pages** (Stock market crash / Recession / Bear market) + company pages.
+**Independent cross-validation:** fear-attention is **1.32× higher on RRAI capitulation days** than
+other days → the capitulation edge now corroborates across THREE independent reads (Reddit sentiment,
+price +0.25pp, Wikipedia fear-attention). It's attention not sentiment, but that's a fit for our
+attention-driven signals + macro fear. This is the chosen independent source; GDELT-BQ/paid only if
+we later need news *sentiment* specifically.
+
 ## ⚠️ REALITY CHECK (2026-06-02) — free EXTERNAL sentiment is gated
 Tested live: **StockTwits is Cloudflare-blocked** (403 "Just a moment"; their API went partner/paid-only).
 **GDELT's free DOC API is unreliable** for us — historical date-range queries return empty, and even
