@@ -74,9 +74,16 @@ def _strategy_signals(name, st):
     return []
 
 
-def current_signals(watchlist=True):
-    """Multi-strategy live payload. Each strategy carries its status + actionable signals."""
+def current_signals(watchlist=True, force=False):
+    """Multi-strategy live payload. Each strategy carries its status + actionable signals.
+    force=True simulates an active capitulation signal (for end-to-end EA testing when the
+    live market is flat) - DO NOT use for real trading decisions."""
     st = capitulation_state()
+    if force:                                    # test mode: pretend capitulation is active
+        st = dict(st)
+        st["active"] = True
+        st["strength"] = st["strength"] or 0.5
+        st["test"] = True
     strategies = []
     for sdef in STRATEGIES:
         sigs = _strategy_signals(sdef["name"], st) if sdef["enabled"] else []
@@ -98,11 +105,11 @@ def current_signals(watchlist=True):
     return payload
 
 
-def as_mt5_lines(payload=None):
+def as_mt5_lines(payload=None, force=False):
     """Compact text the MT5 EA parses trivially: one 'STRATEGY,SYMBOL,SIDE,STRENGTH,HORIZON'
     per active signal. A single '# flat' line when nothing is active. The EA filters by its
     configured strategy tag."""
-    payload = payload or current_signals(watchlist=False)
+    payload = payload or current_signals(watchlist=False, force=force)
     rows = [f"{strat['name']},{s['symbol']},{s['side']},{s['strength']},{s['horizon_days']}"
             for strat in payload["strategies"] for s in strat["signals"]]
     return "\n".join(rows) if rows else "# flat"

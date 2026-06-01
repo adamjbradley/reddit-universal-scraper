@@ -237,15 +237,19 @@ def analytics_pump_suspects(
 
 
 @app.get("/signals", tags=["Signals"])
-def signals_feed(format: str = Query("json", description="json | mt5")):
+def signals_feed(format: str = Query("json", description="json | mt5"),
+                 test: int = Query(0, description="1 = force an active signal (EA testing only)")):
     """Live actionable signals for execution clients. Currently serves the validated RRAI
-    capitulation overlay (buy risk - AUDJPY/index - when retail capitulates AND VIX>=18).
-    format=mt5 returns compact 'SYMBOL,SIDE,STRENGTH,HORIZON' lines for the MetaTrader EA."""
+    capitulation overlay (buy a risk-on basket when retail capitulates AND VIX>=18).
+    format=mt5 returns 'STRATEGY,SYMBOL,SIDE,STRENGTH,HORIZON' lines for the MetaTrader EA.
+    test=1 forces an active signal so you can verify the EA end-to-end while the market is
+    flat - NOT a real trading signal."""
     from analytics.signals import current_signals, as_mt5_lines
+    force = test == 1
     if format == "mt5":
         from fastapi.responses import PlainTextResponse
-        return PlainTextResponse(as_mt5_lines())
-    return current_signals()
+        return PlainTextResponse(as_mt5_lines(force=force))
+    return current_signals(force=force)
 
 
 # --- SEMANTIC SEARCH (embeddings) ---
