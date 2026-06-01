@@ -1155,6 +1155,8 @@ Commands:
                         help="Target table for --aggregate-history-backfill (e.g. au_aggregate_daily)")
     parser.add_argument("--export-signals", action="store_true",
                         help="Export capitulation dates to data/rrai_capitulation.csv (MT5 tester)")
+    parser.add_argument("--wikipedia-backfill", action="store_true",
+                        help="Backfill Wikipedia pageviews (independent fear/attention) 2015+")
     parser.add_argument("--no-media", action="store_true", help="Skip media download")
     parser.add_argument("--no-comments", action="store_true", help="Skip comments")
     
@@ -1481,6 +1483,13 @@ Commands:
         print(recompute_rrai_pct(table=args.history_table))
         return
 
+    # Wikipedia pageviews backfill (independent fear/attention source for cross-validation).
+    if args.wikipedia_backfill:
+        from scraper.wikipedia import wikipedia_backfill
+        print("📖 Backfilling Wikipedia pageviews (fear terms + tickers)...")
+        print(wikipedia_backfill())
+        return
+
     # Export capitulation dates for the MT5 Strategy Tester (Common\Files\rrai_capitulation.csv).
     if args.export_signals:
         from export.database import get_connection as _gc
@@ -1564,6 +1573,14 @@ Commands:
                     fetch_prices(_m)
             except Exception as e:
                 print(f"⚠️ Macro price step skipped: {e}")
+            # Keep the independent Wikipedia fear/attention series current (recent window) -
+            # feeds the fear-confirmation gate on the equity capitulation legs.
+            try:
+                from scraper.wikipedia import wikipedia_backfill
+                _start = (datetime.date.today() - datetime.timedelta(days=40)).strftime("%Y%m%d")
+                wikipedia_backfill(start=_start, end=datetime.date.today().strftime("%Y%m%d"))
+            except Exception as e:
+                print(f"⚠️ Wikipedia step skipped: {e}")
             # Rebuild the point-in-time feature store (cheap; keeps signals current).
             try:
                 from analytics.features import build_all

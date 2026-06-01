@@ -8,6 +8,8 @@ and most sign-stable via FX AUDJPY. The equity pump book is NOT served here yet 
 not survive friction-aware backtesting); pump_suspects is included as an informational
 WATCHLIST only, explicitly not actionable.
 """
+import statistics
+
 from export.database import get_connection
 
 # --- validated overlay parameters (Phase 0 backtest + robustness sweep) ---
@@ -32,6 +34,7 @@ PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "XAUUSD": "GC=F", "US500": "SPY", "USTEC":
 # AUDJPY + metals were all-weather in the multi-regime test, so they are NOT gated.
 GATE_TREND = {"US500", "USTEC"}
 EUPH_THRESHOLD = 0.85   # rrai_pct >= this = retail euphoria (short only in a downtrend)
+FEAR_MIN = 0.5          # equity legs also need INDEPENDENT fear confirmation (Wikipedia z-score)
 
 
 def _latest(ticker):
@@ -59,6 +62,23 @@ def _trend(feed_symbol, slow=200, fast=50):
     if c < sslow and sfast <= sslow:
         return -1
     return 0
+
+
+def _fear_z(lookback=31):
+    """Independent fear-attention z-score from Wikipedia (latest total fear-page views vs the
+    trailing ~30d). >0 = elevated fear. Confirms capitulation for the equity legs - backtests
+    showed SPY capitulation only works (+0.36pp) when an independent fear-spike confirms it."""
+    conn = get_connection()
+    rows = conn.execute("""SELECT date, SUM(volume) v FROM external_sentiment
+                           WHERE source='wikipedia' AND ticker LIKE 'fear_%' AND volume IS NOT NULL
+                           GROUP BY date ORDER BY date DESC LIMIT ?""", (lookback,)).fetchall()
+    conn.close()
+    if len(rows) < 11:
+        return 0.0
+    vals = [r["v"] for r in rows]            # newest first
+    mu = statistics.mean(vals[1:])
+    sd = statistics.pstdev(vals[1:]) or 1.0
+    return round((vals[0] - mu) / sd, 2)
 
 
 def capitulation_state():
@@ -97,13 +117,17 @@ STRATEGIES = [
 
 def _strategy_signals(name, st):
     if name == "retail_fear" and st["active"]:
+        fz = _fear_z()
         out = []
         for ins in INSTRUMENTS:
             tr = _trend(ins["symbol"])
-            if ins["symbol"] in GATE_TREND and tr < 0:        # don't buy fear in a downtrend
+            # equity legs need BOTH an uptrend AND independent fear confirmation (they're
+            # dead otherwise); AUDJPY/metals are all-weather and ungated.
+            if ins["symbol"] in GATE_TREND and (tr < 0 or fz < FEAR_MIN):
                 continue
             out.append({"symbol": ins["symbol"], "asset": ins["asset"], "side": "long",
-                        "strength": st["strength"], "horizon_days": HORIZON_DAYS, "trend": tr,
+                        "strength": st["strength"], "horizon_days": HORIZON_DAYS,
+                        "trend": tr, "fear_z": fz,
                         "reason": f"retail capitulation (RRAI={st['rrai_pct']}) + VIX={st['vix']}"})
         return out
     if name == "euphoria_short" and st.get("euphoria"):
@@ -240,7 +264,7 @@ def current_signals(watchlist=True, force=False):
         "as_of": st["as_of"],
         "market": {"rrai_pct": st["rrai_pct"], "vix": st["vix"],
                    "capitulation_active": st["active"], "euphoria": st.get("euphoria", False),
-                   "spx_trend": _trend("US500"), "strength": st["strength"]},
+                   "spx_trend": _trend("US500"), "fear_z": _fear_z(), "strength": st["strength"]},
         "strategies": strategies,   # TRADEABLE (auto-trade): retail_fear, euphoria_short
         "screens": screens,         # advisory / watch - NOT auto-traded (status-tagged)
         "disclaimer": "Only `strategies` are auto-tradeable (retail_fear validated multi-regime). "
