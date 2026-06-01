@@ -696,6 +696,60 @@ def pump_suspects(window_days=90, min_mentions=10, limit=30):
     return rows
 
 
+def fresh_pump_suspects(window_hours=48, baseline_days=7, min_recent=4,
+                        min_per_author=2.0, burst_mult=3.0, limit=25):
+    """FAST pump detector: scans RAW recent mentions to catch FRESH pump-and-dumps within
+    HOURS - bypassing feature_daily's min_total>=20 gate + 14d trailing windows that make the
+    standard signal ~152 days late. Flags tickers whose last `window_hours` show a concentrated
+    burst far above their short trailing baseline (or that are brand-new to the data). Carries
+    gone/young author fractions (the manipulation tells). For LIVE catching/fading, not backtest."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        WITH recent AS (
+            SELECT m.ticker, COUNT(*) AS rc, COUNT(DISTINCT m.author) AS ra,
+                   AVG(m.sentiment_score) AS sent,
+                   AVG(CASE WHEN a.account_status IN ('deleted','suspended') THEN 1.0 ELSE 0 END) AS gone_frac,
+                   AVG(CASE WHEN a.account_age_days IS NOT NULL AND a.account_age_days<=365 THEN 1.0 ELSE 0 END) AS young_frac
+            FROM ticker_mentions m
+            LEFT JOIN authors a ON a.username = m.author
+            WHERE m.created_utc >= datetime('now', ?)
+              AND m.author NOT IN ('[deleted]','AutoModerator')
+            GROUP BY m.ticker
+        ),
+        base AS (
+            SELECT ticker, COUNT(*) AS bc FROM ticker_mentions
+            WHERE created_utc >= datetime('now', ?) AND created_utc < datetime('now', ?)
+            GROUP BY ticker
+        )
+        SELECT r.ticker, r.rc, r.ra,
+               ROUND(1.0*r.rc/NULLIF(r.ra,0), 2) AS per_author,
+               COALESCE(b.bc, 0) AS baseline_mentions,
+               ROUND(r.sent, 3) AS avg_sent, ROUND(r.gone_frac, 3) AS gone_frac,
+               ROUND(r.young_frac, 3) AS young_frac
+        FROM recent r LEFT JOIN base b ON b.ticker = r.ticker
+        WHERE r.rc >= ? AND 1.0*r.rc/NULLIF(r.ra,0) >= ?
+    """, (f'-{window_hours} hours', f'-{baseline_days} days', f'-{window_hours} hours',
+          min_recent, min_per_author))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+    win_days = window_hours / 24.0
+    base_days = max(baseline_days - win_days, 1.0)
+    out = []
+    for r in rows:
+        recent_rate = r["rc"] / win_days
+        base_rate = r["baseline_mentions"] / base_days
+        fresh = r["baseline_mentions"] == 0
+        burst = (recent_rate / base_rate) if base_rate > 0 else None
+        if fresh or (burst is not None and burst >= burst_mult):
+            r["burst_ratio"] = round(burst, 1) if burst is not None else None  # None = brand-new
+            r["fresh"] = fresh
+            out.append(r)
+    # rank: brand-new first, then concentration x volume
+    out.sort(key=lambda x: (x["fresh"], x["per_author"] * x["rc"]), reverse=True)
+    return out[:limit]
+
+
 def get_authors_needing_age(limit=200):
     """Distinct discovered authors (posts + comments) without a recorded age yet."""
     conn = get_connection()

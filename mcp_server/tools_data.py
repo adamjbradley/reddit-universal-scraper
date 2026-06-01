@@ -131,6 +131,18 @@ def register(mcp):
                              {"window_days": window_days, "min_mentions": min_mentions, "limit": top})
 
     @mcp.tool()
+    async def fresh_pumps(window_hours: int = 48, min_recent: int = 4,
+                          min_per_author: float = 2.0, top: int = 25) -> dict:
+        """FAST pump screen - catches FRESH pump-and-dumps within HOURS (not the ~152-day-late
+        feature signal) by scanning raw recent mentions, bypassing the 20-mention gate. Each row:
+        recent mentions/authors, per_author concentration, baseline_mentions, burst_ratio
+        (recent vs baseline rate; null='brand-new'), gone_frac/young_frac (manipulation tells).
+        Small-cap pumps reliably FADE (backtest t=-3.93), so this is primarily an avoid/fade screen."""
+        return await api_get("/analytics/fresh-pumps", {
+            "window_hours": window_hours, "min_recent": min_recent,
+            "min_per_author": min_per_author, "limit": top})
+
+    @mcp.tool()
     async def current_signals() -> dict:
         """Live actionable trading signals. Serves the Phase-0-validated RRAI capitulation
         overlay: when retail sentiment capitulates (RRAI percentile low) AND VIX confirms

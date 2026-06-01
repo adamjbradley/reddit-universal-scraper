@@ -236,6 +236,22 @@ def analytics_pump_suspects(
     return pump_suspects(window_days=window_days, min_mentions=min_mentions, limit=limit)
 
 
+@app.get("/analytics/fresh-pumps", tags=["Analytics"])
+def analytics_fresh_pumps(
+    window_hours: int = Query(48, ge=1, le=336),
+    min_recent: int = Query(4, ge=1, le=100),
+    min_per_author: float = Query(2.0, ge=1.0, le=20.0),
+    limit: int = Query(25, ge=1, le=200),
+):
+    """FAST pump detector - catches FRESH pump-and-dumps within hours by scanning raw recent
+    mentions (bypasses the slow feature_daily 20-mention gate). Returns tickers with a
+    concentrated recent burst far above baseline (or brand-new), with gone/young author
+    fractions. 'fresh'=true means brand-new to the data; burst_ratio = recent vs baseline rate."""
+    from export.database import fresh_pump_suspects
+    return fresh_pump_suspects(window_hours=window_hours, min_recent=min_recent,
+                               min_per_author=min_per_author, limit=limit)
+
+
 @app.get("/signals", tags=["Signals"])
 def signals_feed(format: str = Query("json", description="json | mt5"),
                  test: int = Query(0, description="1 = force an active signal (EA testing only)")):
