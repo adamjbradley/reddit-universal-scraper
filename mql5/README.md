@@ -23,8 +23,14 @@ formulations). RRAI-momentum and froth had **no edge vs buy-and-hold**; every sh
 trade on MT5 at all — no micro-cap instruments; they're Alpaca-bound.)
 
 ### `retail_fear` (VALIDATED, served live)
-Long risk (AUDJPY + index) when retail capitulates (`rrai_pct ≤ 0.15`) **and** `VIX ≥ 18`;
-~10-day hold; strength-scaled. Best leg is **AUDJPY** (+0.47pp/10d excess, win 88%).
+Long a **risk-on basket** when retail capitulates (`rrai_pct ≤ 0.15`) **and** `VIX ≥ 18`;
+~10-day hold; strength-scaled. An instrument scan (FX/commodities/indices/crypto) found the
+signal **generalises across risk assets** — so spread, don't bet one:
+- **AUDJPY** — steadiest (+0.47pp/10d excess, win 88%, +ve every regime)
+- **Gold (XAUUSD)** — robust (+ve every regime)
+- **US500 / USTEC** — stable
+- **Silver (XAGUSD)** — highest excess (+2.2pp) but **lumpy/outlier-driven → size small**
+- *(Oil and crypto were tested and dropped: one-episode / no edge.)*
 
 ## Setup
 1. **Server:** API reachable, serving `GET /signals?format=mt5` (lines
@@ -35,7 +41,8 @@ Long risk (AUDJPY + index) when retail capitulates (`rrai_pct ≤ 0.15`) **and**
 4. **Attach** `RedditMacro_EA` to any chart; set inputs:
    - `SignalsUrl` → `http://<host>:8000/signals?format=mt5`
    - `StrategyTag` → `retail_fear`
-   - `FxSymbol` / `IndexSymbol` / `TechSymbol` → your broker's AUDJPY / S&P500 / Nasdaq100 names (blank = skip)
+   - `AudJpySymbol` / `GoldSymbol` / `IndexSymbol` / `TechSymbol` / `SilverSymbol` → your broker's
+     AUDJPY / XAUUSD / S&P500 / Nasdaq100 / XAGUSD names (blank = skip any)
    - `BaseLots`, `MaxHoldDays` (10), `PollSeconds` (300), `AuthBearerToken` (only if API requires it)
 
 To run several strategies later, attach one EA instance per `StrategyTag` (all share the include).

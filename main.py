@@ -1521,7 +1521,7 @@ Commands:
             # Keep macro/overlay instruments fresh (index + risk-FX for the RRAI overlay).
             try:
                 from analytics.prices import fetch_prices
-                for _m in ("SPY", "QQQ", "AUDJPY=X"):
+                for _m in ("SPY", "QQQ", "AUDJPY=X", "GC=F", "SI=F"):  # index/FX + gold/silver
                     fetch_prices(_m)
             except Exception as e:
                 print(f"⚠️ Macro price step skipped: {e}")

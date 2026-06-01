@@ -27,14 +27,17 @@ input double BaseLots        = 0.10;
 input bool   ScaleByStrength = true;
 input int    MaxHoldDays     = 10;              // matches the signal horizon
 input int    MagicNumber     = 770077;
-// Map feed symbols -> YOUR broker's names (blank = skip that instrument).
-input string FxSymbol        = "AUDJPY";        // feed "AUDJPY" (strongest leg)
-input string IndexSymbol     = "US500";         // feed "US500"
-input string TechSymbol      = "USTEC";         // feed "USTEC"
+// Map feed symbols -> YOUR broker's names (blank = skip that instrument). The signal is a
+// diversified risk-on basket: AUDJPY (steadiest) + Gold (robust) + indices + Silver (lumpy).
+input string AudJpySymbol    = "AUDJPY";         // feed "AUDJPY"
+input string GoldSymbol      = "XAUUSD";         // feed "XAUUSD" (robust every regime)
+input string IndexSymbol     = "US500";          // feed "US500"
+input string TechSymbol      = "USTEC";          // feed "USTEC"
+input string SilverSymbol    = "XAGUSD";         // feed "XAGUSD" (lumpy - size small, or blank)
 
 CTrade        trade;
 CSignalClient client;
-string g_feed[3], g_broker[3];
+string g_feed[5], g_broker[5];
 int    g_n = 0;
 
 int OnInit()
@@ -42,9 +45,11 @@ int OnInit()
    trade.SetExpertMagicNumber(MagicNumber);
    client.Init(SignalsUrl, AuthBearerToken);
    g_n = 0;
-   if(StringLen(FxSymbol)    > 0){ g_feed[g_n]="AUDJPY"; g_broker[g_n]=FxSymbol;    g_n++; }
-   if(StringLen(IndexSymbol) > 0){ g_feed[g_n]="US500";  g_broker[g_n]=IndexSymbol; g_n++; }
-   if(StringLen(TechSymbol)  > 0){ g_feed[g_n]="USTEC";  g_broker[g_n]=TechSymbol;  g_n++; }
+   if(StringLen(AudJpySymbol) > 0){ g_feed[g_n]="AUDJPY"; g_broker[g_n]=AudJpySymbol; g_n++; }
+   if(StringLen(GoldSymbol)   > 0){ g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;   g_n++; }
+   if(StringLen(IndexSymbol)  > 0){ g_feed[g_n]="US500";  g_broker[g_n]=IndexSymbol;  g_n++; }
+   if(StringLen(TechSymbol)   > 0){ g_feed[g_n]="USTEC";  g_broker[g_n]=TechSymbol;   g_n++; }
+   if(StringLen(SilverSymbol) > 0){ g_feed[g_n]="XAGUSD"; g_broker[g_n]=SilverSymbol; g_n++; }
    EventSetTimer(MathMax(10, PollSeconds));
    Print("RedditMacro_EA started; strategy=", StrategyTag, " url=", SignalsUrl);
    OnTimer();
@@ -58,7 +63,7 @@ void OnTimer()
    SignalRow rows[];
    if(!client.Fetch(rows, StrategyTag)) return;   // network problem -> leave positions
 
-   bool wantLong[3]; double strength[3];
+   bool wantLong[5]; double strength[5];
    for(int i=0;i<g_n;i++){ wantLong[i]=false; strength[i]=0.0; }
    for(int r=0; r<ArraySize(rows); r++)
       for(int i=0;i<g_n;i++)

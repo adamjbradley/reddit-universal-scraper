@@ -14,12 +14,16 @@ from export.database import get_connection
 CAP_THRESHOLD = 0.15     # rrai_pct <= this = retail capitulation
 VIX_MIN = 18.0           # require genuine fear (VIX gate ~4x'd the edge)
 HORIZON_DAYS = 10        # holding period that maximised the bounce
-# Canonical instruments -> the macro expression of "buy risk". The EA maps these to its
-# broker's symbol names (index CFD names vary; FX is standard).
+# The diversified risk-on basket that expresses "buy risk when retail capitulates". An
+# instrument scan across FX/commodities/indices/crypto (backtest/macro_research.py) found
+# the signal GENERALISES across risk assets - so we spread across the robust ones rather
+# than bet one. The EA maps these to its broker's symbol names.
 INSTRUMENTS = [
-    {"symbol": "AUDJPY", "asset": "fx",    "note": "risk-on FX proxy (best/most-stable leg)"},
-    {"symbol": "US500",  "asset": "index", "note": "S&P 500 (SPY)"},
-    {"symbol": "USTEC",  "asset": "index", "note": "Nasdaq 100 (QQQ)"},
+    {"symbol": "AUDJPY", "asset": "fx",        "note": "steadiest (win 88%, +ve every regime)"},
+    {"symbol": "XAUUSD", "asset": "commodity", "note": "gold - robust (+ve every regime)"},
+    {"symbol": "US500",  "asset": "index",     "note": "S&P 500"},
+    {"symbol": "USTEC",  "asset": "index",     "note": "Nasdaq 100"},
+    {"symbol": "XAGUSD", "asset": "commodity", "note": "silver - highest excess but lumpy; size SMALL"},
 ]
 
 

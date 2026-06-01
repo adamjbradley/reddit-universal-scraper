@@ -24,7 +24,7 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated | **+0.2–0.47pp/10d excess vs buy-&-hold**; AUDJPY best (win 88%); VIX gate ~4× | live via MT5 `RedditMacro_EA`; longer history; vol-target sizing |
+| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated | **excess vs buy-&-hold**, generalises across a risk-on basket: Gold +0.6 / AUDJPY +0.5 (win 88%) / SP500 +0.2pp robust; Silver +2.2pp lumpy; VIX gate ~4× | live via MT5 `RedditMacro_EA`; vol-target sizing; longer history |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | 🧪 Untested | awaiting coverage (`gone_frac>0` in 267 rows) | re-backtest at ~30–40% author coverage; express via puts |
@@ -76,8 +76,9 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
 - **Thesis:** retail max-bearish (RRAI pct low / bear-share extreme) + genuine fear (VIX high) → contrarian bounce. Captured 3 ways (capitulation, bear-extreme, pessimism-fade) — all positive-excess, mutually corroborating.
 - **Spec (shipped):** long when `rrai_pct ≤ 0.15` **AND** `VIX ≥ 18`; hold ~10d; size by extremity; **fear-side only**.
 - **Evidence (12mo, net, 10d):** **excess over buy-&-hold** SPY +0.17pp / QQQ +0.23pp / **AUDJPY +0.47pp** (win 88%); `bear_extreme` +0.24/+0.32/+0.36pp corroborates. **VIX gate ~4×'d it** (SPY +1.56%/10d in fear vs +0.42% calm). Modest **timing tilt**, not standalone alpha (buy-&-hold already won 66–75%).
-- **Expression:** FX **AUDJPY** (best leg), index CFDs US500/USTEC. Served via `/signals` (strategy tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo).
-- **Caveats:** single ~12mo bull regime, n≈43–66/bucket, overlapping windows; edge is small in absolute terms.
+- **Instrument scan (17 MT5 instruments, 10d excess vs buy-&-hold):** the signal **generalises across the risk-on basket** — Silver +2.22pp (lumpy, one big rally → size small), Gold +0.59pp (robust, +ve every regime), AUDJPY +0.47pp (steadiest, win 88%), SP500 +0.17pp. Oil (+1.82pp but one-episode) and crypto (BTC net-negative) **dropped**. Generalisation across assets is itself evidence it's a real risk-appetite signal.
+- **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo).
+- **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
 
 ### ❌ Macro candidates that failed (kept so we don't retry)
@@ -139,6 +140,9 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 ---
 
 ## Changelog
+- **2026-06-01** — Instrument scan (17 MT5 instruments). `retail_fear` generalises across the
+  risk-on basket; commodities express it best (Silver +2.2pp lumpy, Gold +0.6pp robust), AUDJPY
+  steadiest. Oil/crypto dropped. Basket = AUDJPY + Gold + indices + small Silver; EA + feed updated.
 - **2026-06-01** — Macro R&D + MT5 framework. Benchmarked candidates vs buy-and-hold: only the
   `retail_fear` contrarian family beats it (best AUDJPY +0.47pp/10d excess); momentum/froth = no
   edge, all shorts fail. Built `SignalClient.mqh` + `RedditMacro_EA.mq5` (strategy-selectable),
