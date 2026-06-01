@@ -139,6 +139,17 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 
 ---
 
+## ★ MULTI-REGIME VALIDATION (2020-2026, incl. COVID crash + 2022 bear)
+The deep-history backfill let us test across regimes — the result that actually moves confidence:
+- **AUDJPY capitulation-long is REGIME-ROBUST** — positive in EVERY year 2020-2026, **including the
+  2022 bear** (+0.7%, win 60%), win rates 60-93%. Graduates from preliminary → **validated**. This is
+  the core tradeable edge.
+- **Equity (SPY) capitulation-long FAILS in a sustained bear** (2022: -0.7%/10d, win 43%) — falling-knife
+  problem → **must gate with the 200-DMA trend filter** (don't buy fear in a downtrend). Confirmed needed.
+- **Euphoria-short only works in the bear** (2022 +1.3%; loses every bull year) → shorts are
+  **regime-conditional**, switch on only in confirmed downtrends. (Vindicates not building shorts earlier.)
+- Caveats: small n/year (18-60), overlapping windows, historical RRAI is a WSB-heavy sampled backfill.
+
 ## Session findings — sector / calendar / latency (2026-06-01)
 - **Sector segmentation rescues the pump signal** (`backtest/sectors.py`). The broad pump was a
   wash because it *mixed opposites*: **small-cap concentrated pumps FADE** (−14.6%/10d excess,
