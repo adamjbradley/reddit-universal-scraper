@@ -175,25 +175,18 @@ def build_aggregate_daily(lookback_days=400):
     # A clean euphoria/capitulation gauge; traded CONTRARIAN at extremes, not directionally.
     # (Leverage-language enrichment - calls/puts ratio, margin/YOLO terms - is a TODO.)
     # Components are stored too, so the composite can be re-validated / re-weighted later.
-    enriched = []
-    for date, tot, tk, au, sent, bull, bear, yf, gf, froth in base:
-        rrai_raw = (bull or 0.0) - (bear or 0.0)
-        enriched.append([date, tot, tk, au, sent, bull, bear, yf, gf, froth, round(rrai_raw, 4)])
-
-    # rrai_pct: trailing 90-day percentile rank of rrai_raw (share of window <= today).
-    # NULL until >= 30 days of history (burn-in) so early days aren't falsely "extreme".
-    WIN, MIN_HIST = 90, 30
-    out = []
-    for i, row in enumerate(enriched):
-        window = [enriched[j][10] for j in range(max(0, i - WIN + 1), i + 1)]
-        pct = None if len(window) < MIN_HIST else round(
-            sum(1 for v in window if v <= row[10]) / len(window), 4)
-        out.append(row + [pct])
+    # rrai_pct is (re)computed globally over the FULL series (recent + any deep history) by
+    # recompute_rrai_pct(); leave it NULL here.
+    out = [[date, tot, tk, au, sent, bull, bear, yf, gf, froth,
+            round((bull or 0.0) - (bear or 0.0), 4), None]
+           for date, tot, tk, au, sent, bull, bear, yf, gf, froth in base]
 
     _ensure_schema()
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM aggregate_daily")
+    # Only rebuild the window we have source mentions for - PRESERVE older deep-history rows
+    # written by the archive aggregate backfill.
+    cur.execute("DELETE FROM aggregate_daily WHERE date >= ?", (cutoff,))
     cur.executemany("""INSERT OR REPLACE INTO aggregate_daily
         (date, total_mentions, tickers, authors, mkt_sent, bull_frac, bear_frac,
          young_frac, gone_frac, froth, rrai_raw, rrai_pct)
@@ -203,8 +196,39 @@ def build_aggregate_daily(lookback_days=400):
     return len(out)
 
 
+def recompute_rrai_pct(win=90, min_hist=30, min_mentions=20):
+    """Recompute rrai_pct over the FULL aggregate_daily series (recent + deep history).
+    Trailing `win`-VALID-day percentile of rrai_raw. THIN-DAY GUARD: days whose sample size
+    (total_mentions) is below min_mentions are too noisy to trust (Reddit participation was
+    far lower in early years) -> rrai_pct=NULL and excluded from the trailing window, so a
+    low-participation day never fires a false signal. The trailing percentile is also what
+    keeps the score robust to secular participation growth - each day is judged against its
+    own recent era, not an absolute baseline."""
+    conn = get_connection()
+    cur = conn.cursor()
+    rows = cur.execute("""SELECT date, rrai_raw, total_mentions FROM aggregate_daily
+                          ORDER BY date""").fetchall()
+    valid = [(r["date"], r["rrai_raw"]) for r in rows
+             if r["rrai_raw"] is not None and (r["total_mentions"] or 0) >= min_mentions]
+    vals = [v for _, v in valid]
+    updates = []
+    for i, (date, raw) in enumerate(valid):
+        window = vals[max(0, i - win + 1): i + 1]
+        pct = None if len(window) < min_hist else round(
+            sum(1 for v in window if v <= raw) / len(window), 4)
+        updates.append((pct, date))
+    valid_dates = {d for d, _ in valid}
+    thin = [(None, r["date"]) for r in rows if r["date"] not in valid_dates]
+    cur.executemany("UPDATE aggregate_daily SET rrai_pct=? WHERE date=?", updates + thin)
+    conn.commit()
+    conn.close()
+    return {"valid_days": len(valid), "thin_or_null_days": len(thin)}
+
+
 def build_all(lookback_days=400, min_total=20):
-    """Rebuild the whole feature store (cross-sectional then aggregate). Idempotent."""
+    """Rebuild the feature store (cross-sectional then aggregate), preserving any deep-history
+    aggregate rows, then re-percentile the FULL series. Idempotent."""
     n_feat = build_feature_daily(lookback_days=lookback_days, min_total=min_total)
     n_agg = build_aggregate_daily(lookback_days=lookback_days)
-    return {"feature_daily_rows": n_feat, "aggregate_daily_rows": n_agg}
+    pct = recompute_rrai_pct()
+    return {"feature_daily_rows": n_feat, "aggregate_daily_rows": n_agg, **pct}

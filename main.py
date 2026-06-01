@@ -1143,6 +1143,12 @@ Commands:
                         help="Deep historical backfill via arctic-shift (past Reddit's 1000-post cap)")
     parser.add_argument("--archive-comment-backfill", action="store_true",
                         help="Historical comments for stored ticker/megathread posts via arctic-shift")
+    parser.add_argument("--aggregate-history-backfill", action="store_true",
+                        help="Extend RRAI history (aggregate-only, no raw posts) via arctic-shift")
+    parser.add_argument("--history-start", type=str, default="2020-01-01",
+                        help="Start date for --aggregate-history-backfill (YYYY-MM-DD)")
+    parser.add_argument("--history-subs", type=str, default="wallstreetbets,stocks,pennystocks",
+                        help="Comma-separated subs for --aggregate-history-backfill")
     parser.add_argument("--no-media", action="store_true", help="Skip media download")
     parser.add_argument("--no-comments", action="store_true", help="Skip comments")
     
@@ -1451,6 +1457,20 @@ Commands:
             except Exception as e:
                 print(f"   ⚠️ comment backfill failed for r/{sub}: {e}")
         print(f"💬 Archive comment backfill complete: {grand} historical comments added")
+        return
+
+    # Aggregate-history backfill: extend the RRAI series back in time (aggregate-only,
+    # no raw posts) so the macro signal can be tested across multiple market regimes.
+    if args.aggregate_history_backfill:
+        from scraper.archive import archive_aggregate_backfill
+        from analytics.features import recompute_rrai_pct
+        subs = [s.strip() for s in args.history_subs.split(",") if s.strip()]
+        # Iterate to today; already-present days (recent block + any done) are skipped, so
+        # this fills exactly the historical gaps regardless of what's already stored.
+        end = datetime.datetime.now().strftime("%Y-%m-%d")
+        print(f"📈 Aggregate-history backfill {args.history_start}..{end}  subs={subs}")
+        archive_aggregate_backfill(subs, args.history_start, end)
+        print(recompute_rrai_pct())
         return
 
     # Update-all mode: incrementally refresh every tracked subreddit in the DB.

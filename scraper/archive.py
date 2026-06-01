@@ -81,6 +81,73 @@ def archive_backfill(subreddit, extract_fn, days=180, dry_run=False, max_pages=3
     return total
 
 
+def _flush_agg(rows):
+    if not rows:
+        return
+    conn = get_connection()
+    conn.executemany("""INSERT OR IGNORE INTO aggregate_daily
+        (date, total_mentions, tickers, authors, mkt_sent, bull_frac, bear_frac,
+         young_frac, gone_frac, froth, rrai_raw, rrai_pct) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+    conn.commit()
+    conn.close()
+
+
+def archive_aggregate_backfill(subreddits, start_date, end_date, posts_per_day=100, sleep=0.35):
+    """Extend the RRAI history WITHOUT storing raw posts (sidesteps the firehose size/speed
+    problem). For each day in [start, end), fetch up to `posts_per_day` posts per sub,
+    compute the day's MENTION-LEVEL sentiment aggregate (bull/bear fractions are sample-
+    invariant, so a daily sample estimates the day's retail risk-appetite), and write ONE
+    aggregate_daily row. total_mentions records the daily sample size for the thin-day guard
+    in recompute_rrai_pct(). Resumable: days already present are skipped. Returns days written.
+    """
+    from analytics.sentiment_engine import score as _sentiment
+    from analytics.tickers import extract_tickers
+
+    conn = get_connection()
+    have = {r["date"] for r in conn.execute(
+        "SELECT date FROM aggregate_daily WHERE total_mentions IS NOT NULL").fetchall()}
+    conn.close()
+
+    start = datetime.date.fromisoformat(start_date)
+    end = datetime.date.fromisoformat(end_date)
+    day, written, buf = start, 0, []
+    while day < end:
+        ds = day.isoformat()
+        if ds in have:
+            day += datetime.timedelta(days=1)
+            continue
+        a0 = int(datetime.datetime(day.year, day.month, day.day,
+                                   tzinfo=datetime.timezone.utc).timestamp())
+        sents, authors = [], set()
+        for sub in subreddits:
+            for p in _fetch(sub, a0, a0 + 86400 - 1, posts_per_day):
+                text = f"{p.get('title', '')} {p.get('selftext', '')}"
+                tickers = extract_tickers(text)
+                if not tickers:
+                    continue
+                s, _ = _sentiment(text)
+                if p.get("author"):
+                    authors.add(p["author"])
+                sents.extend([s] * len(tickers))   # one mention per ticker, post's sentiment
+            time.sleep(sleep)
+        n = len(sents)
+        if n:
+            bull = sum(1 for s in sents if s > 0.3) / n
+            bear = sum(1 for s in sents if s < 0) / n
+            buf.append((ds, n, None, len(authors), round(sum(sents) / n, 4),
+                        round(bull, 4), round(bear, 4), None, None, 0, round(bull - bear, 4), None))
+        else:
+            buf.append((ds, 0, None, len(authors), None, None, None, None, None, 0, None, None))
+        written += 1
+        if written % 60 == 0:
+            _flush_agg(buf); buf = []
+            print(f"   📈 aggregate history: {written} days (at {ds}, last n={n})")
+        day += datetime.timedelta(days=1)
+    _flush_agg(buf)
+    print(f"   📈 aggregate-history backfill: {written} days written ({start_date}..{end_date})")
+    return written
+
+
 def _fetch_comments(link_id, before, limit=100):
     try:
         r = requests.get(COMMENT_API, params={"link_id": link_id, "before": str(before),
