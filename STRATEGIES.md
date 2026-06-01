@@ -16,6 +16,32 @@ changelog at the bottom on every material change.
 | ❌ **Failed** | Tested and does not work (kept here so we don't retry it) |
 | 🧪 **Untested** | Built and wired, awaiting data to evaluate |
 | 💡 **Idea** | Backlog — not yet built |
+| 🔄 **In progress** | Data/build task underway |
+
+## Progress at a glance
+_Last updated: 2026-06-01. Update this section whenever a status, metric, or next-step changes._
+
+### Strategy scoreboard
+| Strategy | Class | Status | Headline result | Next action |
+|---|---|---|---|---|
+| `rrai_capitulation_long` | Macro overlay | ✅ Validated | AUDJPY +0.67%/5d, win 78%, sign-stable; VIX gate ~4× | vol-target sizing; longer history; equity-leg paper |
+| `rrai_euphoria_short` | Macro overlay | ❌ Failed | −0.41%, flips (one-sided factor) | — drop |
+| `dump_fade_DELETION_short` | Equity | 🧪 Untested | awaiting coverage (`gone_frac>0` in 267 rows) | re-backtest at ~30–40% author coverage; express via puts |
+| `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
+| `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
+| `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
+| `organic_long` | Equity | ❌ Failed | −4.2%, sign-stable loser | inverse → `fade_organic_short` |
+
+### Build & data progress
+| Component | Status | Detail |
+|---|---|---|
+| Feature store (`feature_daily` / `aggregate_daily`) | ✅ Done | ~77k ticker-day rows, point-in-time |
+| Friction-aware backtester (`backtest/engine.py`) | ✅ Done | costs + regime split + no-lookahead |
+| `/signals` feed + MT5 EA | ✅ Done | live; currently **flat** (no capitulation) |
+| Author profiling coverage | 🔄 8% | 3,823 / 47,625; 184 gone (116 del / 68 susp); target ~40% |
+| Deletion-gated short testability | 🔄 Surfacing | `gone_frac>0` in 267 feature rows; too sparse to trade yet |
+| Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
+| Equity/options paper client (Alpaca) | 💡 Planned | not started |
 
 ## Methodology (non-negotiables)
 1. **No lookahead** — features at date D use only data ≤ D; entries at the first close *after* D.
