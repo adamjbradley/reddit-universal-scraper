@@ -167,6 +167,36 @@ The deep-history backfill let us test across regimes — the result that actuall
   OpEx week underperforms. Generic equity-flow seasonality → useful as *overlays/filters*, not Reddit alpha.
 - **AU sentiment track** building (`au_aggregate_daily`, post-level) to test AU-sentiment → AUDJPY.
 
+## ★ MASTER BACKTEST vs BUY-AND-HOLD (`backtest/run_all.py`, full 2020-2026, 10d, net of costs)
+Every signal judged on EXCESS over its instrument's unconditional drift (buy-and-hold-anytime).
+| Strategy | n | net% | B&H% | excess | win | verdict |
+|---|---|---|---|---|---|---|
+| retail_fear **AUDJPY** | 338 | +0.53 | +0.27 | **+0.25** | 69% | beats (modest, most robust) |
+| retail_fear SPY | 338 | +0.54 | +0.59 | −0.05 | 61% | **no edge** |
+| retail_fear Gold | 338 | +0.83 | +0.72 | +0.10 | 57% | marginal |
+| euphoria_short SPY | 351 | −1.26 | +0.59 | −1.84 | 27% | no edge |
+| smallcap_pump_fade | 87 | +9.07 | +0.59 | +8.48 | 64% | beats but single-regime + brutal costs |
+| biotech_catalyst | 91 | +22.2 | +0.59 | +21.6 | 36% | fat-tailed LOTTERY (low win) |
+| attention_fade | 252 | −0.73 | +0.59 | −1.31 | 40% | no edge |
+
+**Recalibration:** with a proper buy-and-hold benchmark over the full period, the AUDJPY edge is a
+**modest +0.25pp/10d** (earlier raw "positive every year" overstated it - that was largely drift).
+SPY capitulation does NOT beat buy-and-hold. The big-excess equity signals are single-regime
+(smallcap) or low-win lotteries (biotech). Net: one modest-but-real macro edge, several promising-
+but-unvalidated screens. Do NOT size up on these as-is.
+
+## DATA WE NEED (to validate/strengthen — the binding constraints)
+| Data | Unblocks | Why we lack it |
+|---|---|---|
+| **Intraday prices** (we have EOD only) | pump entry/exit timing; fresh-pump fade execution (pumps move intraday) | not collected |
+| **Historical penny-stock prices + per-ticker features** | multi-regime validation of smallcap_pump_fade & biotech (only 2025-26 exists) | delisted pennies → Yahoo gaps; per-ticker feature_daily only recent |
+| **Short interest / float / borrow fee** | squeeze setups; realistic short cost/feasibility | needs Ortex/FINRA-type feed |
+| **Options chains / IV** | express fades via PUTS (only sane way to short pennies); options-flow signal | not collected |
+| **More years of RRAI history** | tighten the macro edge (effective n ≈ a few dozen fear episodes) | Reddit/arctic-shift depth ~2017+ |
+| **Broader author coverage** (~8% profiled) | the deletion/young-account manipulation tells (currently starved) | rate-limited Reddit /about sweep |
+| **Independent sentiment sources** (StockTwits, news, Discord, crypto + AU subs) | independent episodes → real effective-sample growth without waiting calendar time | not integrated (AU track building) |
+| **Real transaction-cost data** (per-instrument spreads/borrow) | trustworthy net returns (small-cap costs are modelled/optimistic) | not sourced |
+
 ## Update — complete-data confirmation (2026-06-01)
 - US backfill finished: continuous 2020-2026 (2,344 days, 341 capitulation days). **Capitulation-long
   multi-regime result HOLDS on the complete series** — AUDJPY positive every year incl. 2022 bear (win 60-83%).
