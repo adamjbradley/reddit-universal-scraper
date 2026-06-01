@@ -51,24 +51,39 @@ def capitulation_state():
     }
 
 
+# Live macro strategies. The macro R&D (backtest/macro_research.py, excess-over-buy-and-hold)
+# found ONE real edge: contrarian retail-fear. Momentum/froth/all-shorts had no edge (drift),
+# so only `retail_fear` ships enabled. The list is multi-strategy by design - new survivors
+# slot in here and the EA selects by strategy tag.
+STRATEGIES = [
+    {"name": "retail_fear", "status": "validated", "enabled": True,
+     "desc": "long risk when retail capitulates (RRAI pct<=0.15) and VIX>=18 confirms fear"},
+]
+
+
+def _strategy_signals(name, st):
+    if name == "retail_fear" and st["active"]:
+        return [{"symbol": ins["symbol"], "asset": ins["asset"], "side": "long",
+                 "strength": st["strength"], "horizon_days": HORIZON_DAYS,
+                 "reason": f"retail capitulation (RRAI pct={st['rrai_pct']}) + VIX={st['vix']}"}
+                for ins in INSTRUMENTS]
+    return []
+
+
 def current_signals(watchlist=True):
-    """The live signal payload. `signals` are actionable; `watchlist` is informational."""
+    """Multi-strategy live payload. Each strategy carries its status + actionable signals."""
     st = capitulation_state()
-    signals = []
-    if st["active"]:
-        for ins in INSTRUMENTS:
-            signals.append({
-                "symbol": ins["symbol"], "asset": ins["asset"], "side": "long",
-                "strength": st["strength"], "horizon_days": HORIZON_DAYS,
-                "strategy": "rrai_capitulation",
-                "reason": f"retail capitulation (RRAI pct={st['rrai_pct']}) + VIX={st['vix']}",
-            })
+    strategies = []
+    for sdef in STRATEGIES:
+        sigs = _strategy_signals(sdef["name"], st) if sdef["enabled"] else []
+        strategies.append({**sdef, "signals": sigs})
     payload = {
         "as_of": st["as_of"],
         "market": {"rrai_pct": st["rrai_pct"], "vix": st["vix"],
                    "capitulation_active": st["active"], "strength": st["strength"]},
-        "signals": signals,
-        "disclaimer": "Phase-0 preliminary: single ~12mo regime, small n, overlapping windows.",
+        "strategies": strategies,
+        "disclaimer": "Phase-0 preliminary: single ~12mo regime, small n, overlapping windows; "
+                      "edge is a modest timing tilt over buy-and-hold (~0.2-0.5pp/10d).",
     }
     if watchlist:
         try:
@@ -80,9 +95,10 @@ def current_signals(watchlist=True):
 
 
 def as_mt5_lines(payload=None):
-    """Compact text the MT5 EA parses trivially: one 'SYMBOL,SIDE,STRENGTH,HORIZON' per
-    line. Empty (a single '# flat' line) when no signal is active."""
+    """Compact text the MT5 EA parses trivially: one 'STRATEGY,SYMBOL,SIDE,STRENGTH,HORIZON'
+    per active signal. A single '# flat' line when nothing is active. The EA filters by its
+    configured strategy tag."""
     payload = payload or current_signals(watchlist=False)
-    rows = [f"{s['symbol']},{s['side']},{s['strength']},{s['horizon_days']}"
-            for s in payload["signals"]]
+    rows = [f"{strat['name']},{s['symbol']},{s['side']},{s['strength']},{s['horizon_days']}"
+            for strat in payload["strategies"] for s in strat["signals"]]
     return "\n".join(rows) if rows else "# flat"
