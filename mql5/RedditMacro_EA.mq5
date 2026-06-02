@@ -22,8 +22,11 @@
 
 // NOTE: the text after each input is its DISPLAY LABEL in MT5 (it replaces the variable name).
 // --- common (both modes) ---
-input double BaseLots        = 0.10;            // Lots per position
-input int    MaxHoldDays     = 10;              // Max hold (days)
+input bool   UseAtrSizing    = true;            // Size by ATR risk (recommended; overrides Lots)
+input double RiskPctPerTrade = 1.0;             // Risk % of equity per trade (1-ATR move)
+input int    AtrPeriod       = 14;              // ATR period (D1) for sizing
+input double BaseLots        = 0.10;            // Fallback fixed lots (if ATR sizing off)
+input int    MaxHoldDays     = 10;              // Max hold (TRADING days / bars)
 input int    MagicNumber     = 770077;          // Magic number
 // --- Strategy-Tester mode (THIS is what the Tester uses) ---
 input string SignalFile      = "rrai_capitulation.csv";        // TESTER signal CSV (Common Files)
@@ -49,15 +52,46 @@ int    g_n = 0;
 datetime g_sig[];
 int      g_sn = 0;
 datetime g_entry = 0, g_lastBar = 0;
+int      g_atr = INVALID_HANDLE;   // tester: ATR handle (_Symbol)
+int      g_atrLive[4];             // live: ATR handles (parallel to g_broker)
+int      g_held = 0;               // tester: bars (trading days) the position has been held
 
 datetime FloorDay(datetime t) { return (t - (t % 86400)); }
+
+//==================== ATR-based fixed-fractional position size ====================
+// lot such that a 1-ATR adverse move ~= RiskPctPerTrade% of equity, normalising volatility
+// across instruments. Falls back to BaseLots if ATR/tick data isn't available.
+double SizedLot(string sym, int atrh)
+{
+   double minL = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
+   double maxL = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
+   double step = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
+   if(!UseAtrSizing || atrh == INVALID_HANDLE)
+      return MathMax(minL, BaseLots);
+   double buf[];
+   if(CopyBuffer(atrh, 0, 1, 1, buf) != 1 || buf[0] <= 0)
+      return MathMax(minL, BaseLots);
+   double atr     = buf[0];
+   double tickVal = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+   double tickSz  = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
+   if(tickVal <= 0 || tickSz <= 0)
+      return MathMax(minL, BaseLots);
+   double riskMoney  = AccountInfoDouble(ACCOUNT_EQUITY) * RiskPctPerTrade / 100.0;
+   double riskPerLot = (atr / tickSz) * tickVal;          // $ per lot for a 1-ATR move
+   double lots = (riskPerLot > 0) ? riskMoney / riskPerLot : minL;
+   if(step > 0) lots = MathFloor(lots / step) * step;
+   return MathMax(minL, MathMin(maxL, lots));
+}
 
 int OnInit()
 {
    trade.SetExpertMagicNumber(MagicNumber);
    g_tester = (bool)MQLInfoInteger(MQL_TESTER);
    if(g_tester)
+   {
+      g_atr = iATR(_Symbol, PERIOD_D1, AtrPeriod);
       return LoadSignalCsv();                    // TESTER: file only, no WebRequest
+   }
 
    client.Init(SignalsUrl, AuthBearerToken);     // LIVE: feed + basket
    g_n = 0;
@@ -65,6 +99,7 @@ int OnInit()
    if(StringLen(NzdJpySymbol) > 0){ g_feed[g_n]="NZDJPY"; g_broker[g_n]=NzdJpySymbol; g_n++; }
    if(StringLen(AudUsdSymbol) > 0){ g_feed[g_n]="AUDUSD"; g_broker[g_n]=AudUsdSymbol; g_n++; }
    if(StringLen(GoldSymbol)   > 0){ g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;   g_n++; }
+   for(int i = 0; i < g_n; i++) g_atrLive[i] = iATR(g_broker[i], PERIOD_D1, AtrPeriod);
    EventSetTimer(MathMax(10, PollSeconds));
    Print("RedditMacro_EA LIVE; strategy=", StrategyTag, " url=", SignalsUrl);
    OnTimer();
@@ -117,7 +152,8 @@ void OnTimer()
       bool   have = SC_HasPosition(sym, MagicNumber);
       if(wantLong[i] && !have)
       {
-         double lots = SC_NormalizeLots(sym, BaseLots * (ScaleByStrength ? MathMax(0.1, strength[i]) : 1.0));
+         double lots = SizedLot(sym, g_atrLive[i]) * (ScaleByStrength ? MathMax(0.1, strength[i]) : 1.0);
+         lots = SC_NormalizeLots(sym, lots);
          if(lots > 0 && trade.Buy(lots, sym)) Print("OPEN long ", sym, " lots=", lots);
       }
       else if(have && (!wantLong[i] || SC_PositionAgeDays(sym, MagicNumber) >= MaxHoldDays))
@@ -156,12 +192,13 @@ void OnTick()
    datetime day = FloorDay(bt);
    if(HasPosSym())
    {
-      if((day - g_entry) / 86400 >= MaxHoldDays) trade.PositionClose(_Symbol);
+      g_held++;                                          // count TRADING days (bars), not calendar
+      if(g_held >= MaxHoldDays) trade.PositionClose(_Symbol);
    }
    else if(IsSignalDay(day))
    {
-      double lots = MathMax(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), BaseLots);
-      if(trade.Buy(lots, _Symbol)) g_entry = day;
+      double lots = SizedLot(_Symbol, g_atr);
+      if(lots > 0 && trade.Buy(lots, _Symbol)) { g_entry = day; g_held = 0; }
    }
 }
 
