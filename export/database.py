@@ -750,20 +750,40 @@ def fresh_pump_suspects(window_hours=48, baseline_days=7, min_recent=4,
     return out[:limit]
 
 
+# Crypto subs feed only their own pump/meme universe, NOT the equity signals or the deletion
+# short (validated 2026-06-03: crypto is a coincident, redundant risk-appetite read). So the
+# author sweep skips crypto-ONLY authors and front-loads the signal-relevant ones.
+CRYPTO_SUBS = ("CryptoCurrency", "Bitcoin", "CryptoMoonShots", "SatoshiStreetBets")
+
+
 def get_authors_needing_age(limit=200):
-    """Distinct discovered authors (posts + comments) without a recorded age yet."""
+    """Distinct discovered authors without a recorded age yet, PRIORITIZED for the equity
+    signals. Crypto-only authors are excluded (they don't feed the equity/pump signals or the
+    deletion short); within the rest, authors who mention tickers in NON-crypto subs come first
+    (by mention volume) so the sweep fills the signal-relevant population first, then falls back
+    to other non-crypto posters."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT author FROM (
-            SELECT author FROM posts WHERE author IS NOT NULL
-            UNION
-            SELECT author FROM comments WHERE author IS NOT NULL
+    placeholders = ",".join("?" * len(CRYPTO_SUBS))
+    cursor.execute(f"""
+        WITH ranked AS (
+            SELECT author, COUNT(*) AS act, 0 AS pri       -- ticker-mentioners (signal-relevant)
+            FROM ticker_mentions
+            WHERE author NOT IN ('[deleted]', 'AutoModerator')
+              AND subreddit NOT IN ({placeholders})
+            GROUP BY author
+            UNION ALL
+            SELECT author, 0 AS act, 1 AS pri              -- other non-crypto posters (fallback)
+            FROM posts
+            WHERE author NOT IN ('[deleted]', 'AutoModerator')
+              AND subreddit NOT IN ({placeholders})
         )
-        WHERE author NOT IN ('[deleted]', 'AutoModerator')
-          AND author NOT IN (SELECT username FROM authors)
+        SELECT author FROM ranked
+        WHERE author NOT IN (SELECT username FROM authors)
+        GROUP BY author
+        ORDER BY MIN(pri), MAX(act) DESC
         LIMIT ?
-    """, (limit,))
+    """, (*CRYPTO_SUBS, *CRYPTO_SUBS, limit))
     res = [r["author"] for r in cursor.fetchall()]
     conn.close()
     return res
