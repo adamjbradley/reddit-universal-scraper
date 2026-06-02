@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated (**re-confirmed 2016-26**) | **excess vs buy-&-hold** across a risk-on basket. **AUDJPY (core edge) on the extended 2016-26 series: +0.48%/10d VIX-gated, t(exc)=2.93, +ve in 9/10 years** (2018 the lone falling-knife year, −1.05%). Gold +0.6 / SP500 +0.2 robust; Silver +2.2 lumpy; VIX gate ~doubles it | live via MT5 `RedditMacro_EA`; vol-target sizing |
+| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated / ⚠️ **NOT yet live-tradeable** | **EXCESS vs buy-&-hold** is real & robust: AUDJPY +0.48%/10d VIX-gated, **t(exc)=2.93, +ve 9/10 years**; generalises across AUD/NZD FX + gold. **BUT the MT5 reality check shows it doesn't survive naive long-on-trigger execution** (PF 0.85-1.01) — see the MT5 reality-check section. Needs a turn-based entry + stop. | build a **turn-based entry** (VIX rolling over / RRAI recovering) + stop; then re-backtest in MT5 |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -317,7 +317,37 @@ it (diminishing), not new alpha; EM/growth-commodity legs add cost/tail-risk for
 **MT5 absolute check** (long-only, ungated, BaseLots=1.0): AUDJPY net +$10.4k (PF 1.14) but AUDUSD ~flat in
 dollars (it *declined*, so +excess ≠ +absolute) and 60%+ DD → deployable version needs the VIX gate + vol-target sizing.
 
+## ⚠️ MT5 EXECUTION REALITY CHECK (2026-06-03) — the excess edge does NOT survive naive execution
+After fixing the EA's position sizing (ATR fixed-fractional, risk 1%/trade) and hold (trading days),
+the MT5 tester is finally trustworthy (FX-leg drawdowns fell from ~90% to ~17-20%). It tells a sobering story:
+
+| leg (VIX-gated entry, ATR-sized, 10 trading-day hold, 2016-26) | trades | win% | PF | maxDD% |
+|---|---|---|---|---|
+| AUDJPY | 67 | 41.8 | **0.85** | 20 |
+| AUDUSD | 67 | 55.2 | **0.91** | 17 |
+| Gold | 67 | 56.7 | **1.01** | 93 ⚠️ (no stop → trending losses run) |
+
+**The validated EXCESS edge (AUDJPY t=2.93, etc.) does NOT translate into a profitable naive
+long-on-trigger MT5 strategy.** Why the gap:
+1. **Entry timing.** Python averages over *all* capitulation days (overlapping); the EA enters on the
+   *first* trigger of a cluster — i.e. while the market is *still falling* (the cluster-start = falling
+   knife). The bounce the excess metric sees is *averaged over the cluster*, not capturable by entering at its start.
+2. **Excess ≠ absolute.** The FX legs have ~0 unconditional drift, so a positive *excess* (+0.48% vs B&H)
+   nets ~0 in *dollars*. The Python t-stat measures "higher than drift," not "profitable."
+3. **No stop.** Holding 10 days with no stop lets losses run (gold DD 93%).
+
+**Honest status:** the edge is a real *statistical* property but is **not deployable as specified.** To make
+it tradeable it needs **better entry (catch the *turn* — VIX rolling over / RRAI recovering — not the first
+fall) + a stop loss**. Until then, treat the FX/gold basket as *research-validated (excess), not live-tradeable*.
+The MT5 EA is now a sound execution+sizing shell; the missing piece is the entry rule.
+
 ## Changelog
+- **2026-06-03** — **MT5 reality check: excess edge ≠ tradeable.** Fixed the EA (ATR fixed-fractional sizing
+  + trading-day holds; compiled clean), which collapsed the fixed-lot drawdown artifact (90%→17-20% on FX)
+  and revealed the truth: under realistic single-entry execution the capitulation longs are breakeven-to-
+  negative (AUDJPY PF 0.85, AUDUSD 0.91, gold 1.01 but 93% DD). The validated *excess* edge doesn't survive
+  naive long-on-trigger execution — gap is entry timing (cluster-start = falling knife) + excess≠absolute +
+  no stop. Needs a turn-based entry + stop to deploy. Basket downgraded to research-validated, not live-tradeable.
 - **2026-06-03** — **Trimmed live basket to tradable-alpha only.** Per the cross-asset map, kept the four
   legs with significant excess (t≥2): **AUDJPY (2.93), NZDJPY (3.18), AUDUSD (2.72), Gold (2.03)**. Dropped
   US500/USTEC (t≈1) and Silver (1.72, lumpy); parked `euphoria_short` (traded the dropped indices, −1.84
