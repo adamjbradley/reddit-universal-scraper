@@ -268,7 +268,22 @@ but-unvalidated screens. Do NOT size up on these as-is.
   no historical penny-stock prices/features, so it **can't be multi-regime validated** → stays ADVISORY,
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
+## Crypto — coincident, NOT a leading indicator (tested 2026-06-03)
+Added CryptoCurrency/Bitcoin/CryptoMoonShots/SatoshiStreetBets (~1yr; Bitcoin 61k posts) and tested
+whether crypto leads equities / risk-appetite. **It doesn't — it's coincident:**
+- **Price lead-lag (BTC↔SPY, 2,577d):** same-day corr **+0.17 (t=8.8)** but every lead/lag k≠0 is noise (|t|<1.3) — neither leads.
+- **Weekend test** (crypto's best shot — BTC trades Sat/Sun while equities are closed; 490 weekends): corr +0.05, **t=1.2** — no lead.
+- **Crypto sentiment → equity RRAI:** corr **peaks at k=0 (+0.20, t=3.9)** then decays (a lead would peak at k>0). Barely predicts even BTC's *own* next-day return (+0.05).
+- **Combined crypto+equity RRAI capitulation (1yr overlap, n=55):** does **NOT** help — for the validated AUDJPY edge it *dilutes* it (equity-only excess **+0.55%** > combined +0.45% > crypto-only −0.03%). Crypto sentiment is redundant with (and noisier than) the equity RRAI.
+- One weak whiff: crypto *euphoria* → mildly negative SPY 3d (t=−2.4, but overlapping windows → true t≈−1.4) — *contrarian*, not leading. Watch, not an edge.
+
+**Takeaway:** crypto's value is NOT macro timing (it's a redundant coincident risk-appetite read). It's worth keeping only as its own **pump/meme universe** (CryptoMoonShots/SatoshiStreetBets) for the `distribution_short`/pump signals. Do not fold it into the RRAI.
+
 ## Changelog
+- **2026-06-03** — **Crypto leading-indicator test: COINCIDENT, not leading.** Price lead-lag BTC↔SPY ≈0
+  (same-day +0.17 but k≠0 noise), weekend test t=1.2, crypto sentiment coincident with equity RRAI (peaks
+  k=0). Combined crypto+equity RRAI does NOT improve capitulation — *dilutes* the AUDJPY edge (+0.55%→+0.45%).
+  Crypto's value = its own pump/meme universe, not macro timing. (See "Crypto — coincident" section.)
 - **2026-06-03** — **RRAI extended to 2016-06 (525 caps, +190) → fear-gate STRENGTHENED.** Backfill landed
   (aggregate_daily 2016-06→2026, 3,653 days; +2018 Volmageddon/Q4 episodes). Re-ran `backtest.fear_gate`:
   fear-only excess grew SPY +0.32→+0.57, QQQ +0.41→+0.80 (effect *grew* OOS = real-edge signature);
