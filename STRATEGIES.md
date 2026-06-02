@@ -45,7 +45,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 | Author profiling coverage | 🔄 20% | 30,015 / 152,040; 2,973 gone (2,087 del / 886 susp); target ~40% |
 | Deletion-gated short testability | ✅ Forensically validated | gone≥0.20 short +14.3%/10d, t=2.57 (n=30); PIT `young_frac` proxy still sparse (n=3–7) |
 | Short-interest / squeeze data (FINRA Reg SHO) | ✅ Done | `scraper/finra.py`: 475k rows / 5,693 tickers; **z-score** screen (abs level is MM noise, median 0.49) |
-| Independent fear-confirmation gate (Wikipedia) | ✅ Live / ⚠️ not committed-backtested | `fear_z≥0.5` gates the equity legs of `retail_fear`; +0.36pp rescue (ad-hoc); 1.32× fear-attention on cap days. **TODO: commit a reproducible fear-gated study** |
+| Independent fear-confirmation gate (Wikipedia) | 🟡 Live but DOUBTFUL | MT5 A/B (US500, 2020-26): `fear_z` gate **hurts** absolute returns (fires long into tops, e.g. Feb-2020); only the **trend filter** helps (DD 13.6→7.1%). +0.36pp was *excess* (diff metric) & never committed. **TODO: committed excess-based study; maybe drop `fear_z`** |
 | Live screens in `/signals` (`tradeable:false`) | ✅ Done | `smallcap_pump_fade` · `fresh_pump_alert` · `coordination_flag` · `biotech_catalyst` · `attention_fade` · `calendar_overlay` |
 | Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
 | Equity/options paper client (Alpaca) | 💡 Planned | not started |
@@ -81,7 +81,18 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
 - **Spec (shipped):** long when `rrai_pct ≤ 0.15` **AND** `VIX ≥ 18`; hold ~10d; size by extremity; **fear-side only**.
 - **Evidence (12mo, net, 10d):** **excess over buy-&-hold** SPY +0.17pp / QQQ +0.23pp / **AUDJPY +0.47pp** (win 88%); `bear_extreme` +0.24/+0.32/+0.36pp corroborates. **VIX gate ~4×'d it** (SPY +1.56%/10d in fear vs +0.42% calm). Modest **timing tilt**, not standalone alpha (buy-&-hold already won 66–75%).
 - **Instrument scan (17 MT5 instruments, 10d excess vs buy-&-hold):** the signal **generalises across the risk-on basket** — Silver +2.22pp (lumpy, one big rally → size small), Gold +0.59pp (robust, +ve every regime), AUDJPY +0.47pp (steadiest, win 88%), SP500 +0.17pp. Oil (+1.82pp but one-episode) and crypto (BTC net-negative) **dropped**. Generalisation across assets is itself evidence it's a real risk-appetite signal.
-- **🟢 Independent fear-confirmation gate (Wikipedia, LIVE):** the **equity** legs (US500/USTEC) additionally require an *independent* fear spike — `fear_z ≥ 0.5`, the z-score of Wikipedia fear-page attention (Stock_market_crash / Recession / Bear_market views) vs the trailing ~30d — **AND** a 200-DMA uptrend. Rationale: SPY capitulation *alone* doesn't beat buy-and-hold (master backtest excess −0.05) and turns into a falling-knife in bears; an independent fear-spike rescues it. **Earlier ad-hoc backtest: SPY capitulation +0.36pp/10d when `fear_z` confirms vs ~−0.01 ungated**, and cross-validation shows fear-attention is **1.32× higher on capitulation days** (independent of Reddit + price → 3rd corroborating read; see `DATA_PLAN.md`). Wired live in `analytics/signals.py` (`_fear_z`, `FEAR_MIN`, gates the equity legs; `fear_z` shipped in `/signals`). **⚠️ Caveat:** this +0.36pp figure is from an *ad-hoc* run — **not yet a committed/re-runnable backtest** (the master `run_all.py` doesn't yet split capitulation by `fear_z`). TODO: add a committed fear-gated capitulation study so the claim is reproducible.
+- **🟡 Independent fear-confirmation gate (Wikipedia, LIVE — but now DOUBTFUL):** the **equity** legs (US500/USTEC) additionally require an *independent* fear spike — `fear_z ≥ 0.5`, the z-score of Wikipedia fear-page attention (Stock_market_crash / Recession / Bear_market views) vs the trailing ~30d — **AND** a 200-DMA uptrend. Original rationale: SPY capitulation *alone* doesn't beat buy-and-hold (master backtest excess −0.05); an *ad-hoc* run reported **+0.36pp/10d when `fear_z` confirms vs ~−0.01 ungated**, and fear-attention is **1.32× higher on capitulation days** (`DATA_PLAN.md`). Wired live in `analytics/signals.py` (`_fear_z`, `FEAR_MIN`; `fear_z` in `/signals`).
+  - **🔬 MT5 Strategy-Tester A/B (US500, D1, 2020–2026, long-only, real spread/swap; `mql5/RedditMacro_US500_*.ini`, dates via `python main.py --export-signals`).** This tests the gate as an **absolute long-only rule** (NOT excess-vs-buy-&-hold):
+
+    | variant | signals | trades | win% | net $ | PF | maxDD% |
+    |---|---|---|---|---|---|---|
+    | baseline (all caps) | 335 | 100 | 57.0 | **+12** | 1.00 | 13.6 |
+    | `fear_z≥0.5` only | 95 | 45 | 53.3 | **−1045** | 0.68 | 13.0 |
+    | trend up (200-DMA) only | 223 | 71 | 56.3 | **+21** | 1.01 | 9.0 |
+    | trend **AND** fear (the live gate) | 54 | 27 | 55.6 | **−372** | 0.73 | 7.1 |
+
+    **Result: the `fear_z` gate does NOT help — it hurts.** Adding fear makes US500 *worse* both alone (−$1045) and with trend (−$372 vs trend-only +$21). Fear spikes cluster *at/just before tops* where the 200-DMA still reads up (e.g. Feb-2020) → `trend AND fear` fires **long into the COVID falling knife**. The **trend filter** is the only component that helps, and mostly by cutting drawdown (13.6→7.1%), not return. Baseline ≈ breakeven re-confirms equity capitulation has no absolute edge.
+  - **⚠️ Interpretation:** MT5 measures *absolute* long-only profit; the +0.36pp claim was *excess vs buy-&-hold* (different metric) → this doesn't *directly* refute it, but it removes any real-money support for the gate on the index it gates, and the +0.36pp was never committed-backtested either. **Net: downgrade the fear-gate to 🟡 doubtful** — at best it's a drawdown/risk control, not a return edge. **TODO: settle it with a committed *excess-based* Python study** (the only frame that can validate the +0.36pp); consider dropping `fear_z` from the live equity gate and keeping only the trend filter pending that.
 - **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). Equity legs gated by trend + `fear_z`.
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
@@ -233,6 +244,13 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **MT5 backtest of the fear-gate → it's a DRAG, not a rescue.** Extended `--export-signals`
+  to emit 4 point-in-time capitulation date-sets (baseline / `fear_z≥0.5` / 200-DMA-trend / trend+fear)
+  and ran each through the MT5 Strategy Tester on US500 (2020-26) via `RedditMacro_US500_*.ini`. Adding
+  `fear_z` made absolute returns *worse* (alone −$1045, with trend −$372 vs trend-only +$21) — fear spikes
+  fire long into tops (Feb-2020). Only the trend filter helps (DD 13.6→7.1%). Caveat: MT5 = absolute
+  long-only, the +0.36pp was *excess* — so not a direct refutation, but the gate is downgraded to
+  🟡 doubtful and needs a committed *excess-based* study to settle (maybe drop `fear_z`, keep trend).
 - **2026-06-02** — **Doc-completeness pass.** Audited the doc against the live registry + all backtest
   modules. Found one missing edge — the **Wikipedia fear-confirmation gate** (live: gates the equity legs
   of `retail_fear`, `fear_z≥0.5`, +0.36pp rescue) — now documented, *honestly flagged as not yet

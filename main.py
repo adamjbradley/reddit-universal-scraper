@@ -1492,13 +1492,69 @@ Commands:
 
     # Export capitulation dates for the MT5 Strategy Tester (Common\Files\rrai_capitulation.csv).
     if args.export_signals:
+        import bisect
+        import statistics as _st
         from export.database import get_connection as _gc
-        dates = [r["date"][:10].replace("-", ".") for r in _gc().execute(
+        conn = _gc()
+        caps = [r["date"][:10] for r in conn.execute(
             "SELECT date FROM aggregate_daily WHERE rrai_pct<=0.15 ORDER BY date").fetchall()]
-        with open("data/rrai_capitulation.csv", "w") as f:
-            f.write("\n".join(dates) + "\n")
-        print(f"Exported {len(dates)} capitulation dates -> data/rrai_capitulation.csv"
-              + (f" ({dates[0]}..{dates[-1]})" if dates else ""))
+        # Historical POINT-IN-TIME fear_z (Wikipedia fear-page attention), replicating
+        # analytics.signals._fear_z but computed AS OF each capitulation date (no lookahead):
+        # total fear-page views that day vs the trailing ~30 fear-days. This is the
+        # independent-confirmation gate the live equity legs use.
+        frows = conn.execute("""SELECT date, SUM(volume) v FROM external_sentiment
+                                WHERE source='wikipedia' AND ticker LIKE 'fear_%' AND volume IS NOT NULL
+                                GROUP BY date ORDER BY date""").fetchall()
+        conn.close()
+        fdates = [r["date"][:10] for r in frows]
+        fvals = [r["v"] for r in frows]
+
+        def fear_z_asof(day, lookback=31):
+            i = bisect.bisect_right(fdates, day) - 1          # last fear-day <= signal day
+            if i < 10:
+                return 0.0
+            win = fvals[max(0, i - lookback + 1): i + 1]
+            latest, base = win[-1], win[:-1]
+            mu = _st.mean(base)
+            sd = _st.pstdev(base) or 1.0
+            return (latest - mu) / sd
+
+        # POINT-IN-TIME 200-DMA trend on SPY (the proxy the live _trend("US500") uses): up =
+        # close>SMA200 AND SMA50>=SMA200. The equity legs need this AS WELL AS fear_z (the
+        # multi-regime study showed equity capitulation is a falling-knife without a trend gate).
+        conn2 = _gc()
+        prows = conn2.execute("SELECT date, close FROM prices WHERE ticker='SPY' ORDER BY date").fetchall()
+        conn2.close()
+        pdates = [r["date"][:10] for r in prows]
+        pclose = [r["close"] for r in prows]
+
+        def trend_up_asof(day):
+            i = bisect.bisect_right(pdates, day) - 1          # last session <= signal day
+            if i < 200:
+                return False
+            c = pclose[i]
+            sslow = _st.mean(pclose[i - 199: i + 1])
+            sfast = _st.mean(pclose[i - 49: i + 1])
+            return c > sslow and sfast >= sslow
+
+        fear = [d for d in caps if fear_z_asof(d) >= 0.5]
+        trend = [d for d in caps if trend_up_asof(d)]
+        trendfear = [d for d in caps if trend_up_asof(d) and fear_z_asof(d) >= 0.5]
+
+        def _write(path, ds):
+            with open(path, "w") as f:
+                f.write("\n".join(d.replace("-", ".") for d in ds) + ("\n" if ds else ""))
+
+        _write("data/rrai_capitulation.csv", caps)                  # ungated baseline (AUDJPY/Gold legs)
+        _write("data/rrai_capitulation_feargate.csv", fear)         # fear_z>=0.5 only
+        _write("data/rrai_capitulation_trend.csv", trend)           # 200-DMA uptrend only
+        _write("data/rrai_capitulation_trendfear.csv", trendfear)   # LIVE equity gate: trend AND fear
+        n = max(len(caps), 1)
+        print(f"Exported capitulation date variants ({caps[0]}..{caps[-1]}):" if caps else "no caps")
+        print(f"  baseline (all)            {len(caps):3d}  -> data/rrai_capitulation.csv")
+        print(f"  fear_z>=0.5               {len(fear):3d}  -> data/rrai_capitulation_feargate.csv   ({100*len(fear)//n}%)")
+        print(f"  trend up (200-DMA)        {len(trend):3d}  -> data/rrai_capitulation_trend.csv      ({100*len(trend)//n}%)")
+        print(f"  trend AND fear (LIVE leg) {len(trendfear):3d}  -> data/rrai_capitulation_trendfear.csv  ({100*len(trendfear)//n}%)")
         return
 
     # Update-all mode: incrementally refresh every tracked subreddit in the DB.
