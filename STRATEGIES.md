@@ -24,10 +24,10 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated | **excess vs buy-&-hold**, generalises across a risk-on basket: Gold +0.6 / AUDJPY +0.5 (win 88%) / SP500 +0.2pp robust; Silver +2.2pp lumpy; VIX gate ~4× | live via MT5 `RedditMacro_EA`; vol-target sizing; longer history |
+| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated (**re-confirmed 2016-26**) | **excess vs buy-&-hold** across a risk-on basket. **AUDJPY (core edge) on the extended 2016-26 series: +0.48%/10d VIX-gated, t(exc)=2.93, +ve in 9/10 years** (2018 the lone falling-knife year, −1.05%). Gold +0.6 / SP500 +0.2 robust; Silver +2.2 lumpy; VIX gate ~doubles it | live via MT5 `RedditMacro_EA`; vol-target sizing |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
-| `dump_fade_DELETION_short` | Equity | ✅ Thesis validated (forensic) / ⚠️ not yet PIT-tradeable | **gone≥0.20 → +14.3%/10d short, 83% win, t=2.57, +ve in all 3 regimes**; control proves the gate flips the trade (un-gated pump short *loses* −10.8%, t=−2.22) | make tradeable: finish author sweep to power the PIT `young_frac` gate (now n=3–7, inconclusive); express via puts |
+| `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
 | `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | 🟡 Promising — **PIT-tradeable** | concentrated pump (per_author≥2, m≥10) + sentiment≥0.4 + 5d price already rolling over → **+7.2%/10d net short, t=2.70**; **date-clustered t=2.52 (47 indep. dates), dose-response in sentiment, +ve all 3 sub-periods, survives 2× costs**; control (same pumps, no divergence) *loses* −4.1% | OOS-collect forward; tighten `per_author` (some ETF/large-cap leak in); express via puts; promote on more episodes |
 | `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
 | `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
@@ -42,8 +42,8 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 | `/signals` feed (multi-strategy, json\|mt5) | ✅ Done | strategy-tagged; live, currently **flat** |
 | Macro strategy R&D (`backtest/macro_research.py`) | ✅ Done | only `retail_fear` beats buy-&-hold; momentum/froth no edge |
 | MT5 framework (`SignalClient.mqh` + `RedditMacro_EA.mq5`) | ✅ Done | strategy-selectable thin client; demo-only |
-| Author profiling coverage | 🔄 20% | 30,015 / 152,040; 2,973 gone (2,087 del / 886 susp); target ~40% |
-| Deletion-gated short testability | ✅ Forensically validated | gone≥0.20 short +14.3%/10d, t=2.57 (n=30); PIT `young_frac` proxy still sparse (n=3–7) |
+| Author profiling coverage | 🔄 24% overall / **100% of pump-authors** | 46,637 profiled, 6,153 gone; sweep now skips crypto-only + front-loads ticker-mentioners. **Targeted-profiled all 487 equity pump-authors.** |
+| Deletion-gated short | ❌ **Failed at full coverage** | The +14.3% was a coverage artifact (25% sample missed squeezers). At 100% pump-author coverage: gone≥0.20 **−19.3%/10d** (IXHL −625% tail); young_frac short −39%→−87%. Stock-short dead; puts-only if at all. |
 | Short-interest / squeeze data (FINRA Reg SHO) | ✅ Done | `scraper/finra.py`: 475k rows / 5,693 tickers; **z-score** screen (abs level is MM noise, median 0.49) |
 | Independent fear-confirmation gate (Wikipedia) | 🟡→🟢 Strengthened on 2016-26 | **Extended series (525 caps, `backtest/fear_gate.py`):** **fear-only** excess SPY +0.57 (day t=1.64, **episode t=2.77**) / QQQ +0.80 (day t=1.91, **episode t=2.37**) — effect *grew* with the 2018 episodes & SPY/QQQ now **agree** ⇒ likely real (day-level still marginal). The LIVE **trend+fear still ≈0** (SPY +0.10/QQQ +0.11) → **trend filter should be dropped, use fear-only**. AUDJPY stays ungated (fear *hurts* it, +0.21→+0.09). |
 | Live screens in `/signals` (`tradeable:false`) | ✅ Done | `smallcap_pump_fade` · `fresh_pump_alert` · `coordination_flag` · `biotech_catalyst` · `attention_fade` · `calendar_overlay` |
@@ -146,8 +146,9 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 - **Thesis:** broad attention spikes mean-revert down (inverse of the robust `organic_long` loss).
 - **Result:** net +0.83%, but **flips in P3** (win 46%) — the reversion is real but shorting costs + recent weakening eat it. **Marginal.** Revisit via **puts** (cheaper than borrow) and with a VIX/vol gate.
 
-### ✅ `dump_fade_DELETION_short` — short a pump whose promoters vanished *(THE thesis — forensically validated)*
-- **Thesis:** concentrated pump + promoters now **deleted/suspended** → manufactured → fade the collapse. The original A2 idea, and the *reason* we track account lifecycle.
+### ❌ `dump_fade_DELETION_short` — short a pump whose promoters vanished *(THE thesis — DIED at full coverage)*
+> **⚠️ REVERSAL (2026-06-03).** This was "forensically validated" at +14.3%/10d (n=30-36) — but that ran at only **~25% pump-author coverage**. We then **targeted-profiled all 487 equity pump-authors (→100%)** and re-tested: the edge **flips to −19.3%/10d (n=87)**, and the PIT `young_frac` short is −39% to −87%. Cause: **squeeze tails** — a single ticker (IXHL) squeezed **−625%/−404%/−377%** in July-2025; the partial sample simply hadn't profiled its authors, so those events were invisible. Lesson logged: **small-n + partial-coverage results are dangerous**; shorting live manipulated micro-caps has *uncapped* left-tail risk. Win rate is still ~64% (most pumps fade), so the thesis isn't *wrong* — but it's only expressible via **puts** (defined risk caps the −625%). The price-rolling-over filter is what makes `distribution_short` survive where this dies.
+- **Thesis (original):** concentrated pump + promoters now **deleted/suspended** → manufactured → fade the collapse. The original A2 idea, and the *reason* we track account lifecycle.
 - **Result (2026-06-02, 20% author coverage, h=10, market-neutral, 75bps + 8bps/day borrow):**
   | gate | n | net short | win | t | regimes |
   |---|---|---|---|---|---|
@@ -280,6 +281,14 @@ whether crypto leads equities / risk-appetite. **It doesn't — it's coincident:
 **Takeaway:** crypto's value is NOT macro timing (it's a redundant coincident risk-appetite read). It's worth keeping only as its own **pump/meme universe** (CryptoMoonShots/SatoshiStreetBets) for the `distribution_short`/pump signals. Do not fold it into the RRAI.
 
 ## Changelog
+- **2026-06-03** — **Deletion short DIED at full coverage; AUDJPY re-confirmed; sweep de-crypto'd.**
+  (1) Targeted-profiled all 487 equity pump-authors (25%→100% relevant coverage). The deletion short
+  **flipped negative** — gone≥0.20 → −19.3%/10d (n=87), young_frac short −39%→−87% — dominated by squeeze
+  tails (IXHL −625%) the 25% sample had missed. The +14.3% was a **coverage-bias artifact**. Dead as a
+  stock short; puts-only. `distribution_short` (price-rolling-over filter) is the survivor.
+  (2) **AUDJPY capitulation re-validated on 2016-26**: +0.48%/10d VIX-gated, **t(exc)=2.93**, +ve 9/10 years
+  (2018 the lone falling-knife miss). Now the most significant edge in the system; unaffected by author work (pure macro).
+  (3) `get_authors_needing_age` now skips crypto-only authors + front-loads ticker-mentioners.
 - **2026-06-03** — **Crypto leading-indicator test: COINCIDENT, not leading.** Price lead-lag BTC↔SPY ≈0
   (same-day +0.17 but k≠0 noise), weekend test t=1.2, crypto sentiment coincident with equity RRAI (peaks
   k=0). Combined crypto+equity RRAI does NOT improve capitulation — *dilutes* the AUDJPY edge (+0.55%→+0.45%).
