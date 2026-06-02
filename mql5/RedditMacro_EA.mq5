@@ -34,6 +34,8 @@ input string StrategyTag     = "retail_fear";   // LIVE strategy to trade
 input int    PollSeconds     = 300;             // LIVE poll interval sec
 input bool   ScaleByStrength = true;            // LIVE scale lots by strength
 input string AudJpySymbol    = "AUDJPY";        // LIVE broker symbol for AUDJPY
+input string NzdJpySymbol    = "NZDJPY";        // LIVE broker symbol for NZDJPY (t=3.18)
+input string AudUsdSymbol    = "AUDUSD";        // LIVE broker symbol for AUDUSD (t=2.72)
 input string GoldSymbol      = "XAUUSD";        // LIVE broker symbol for Gold
 input string IndexSymbol     = "US500";         // LIVE broker symbol for SP500
 input string TechSymbol      = "USTEC";         // LIVE broker symbol for Nasdaq
@@ -43,7 +45,7 @@ CTrade        trade;
 CSignalClient client;
 bool   g_tester = false;
 // live: feed-symbol -> broker-symbol map
-string g_feed[5], g_broker[5];
+string g_feed[7], g_broker[7];
 int    g_n = 0;
 // tester: capitulation dates
 datetime g_sig[];
@@ -62,6 +64,8 @@ int OnInit()
    client.Init(SignalsUrl, AuthBearerToken);     // LIVE: feed + basket
    g_n = 0;
    if(StringLen(AudJpySymbol) > 0){ g_feed[g_n]="AUDJPY"; g_broker[g_n]=AudJpySymbol; g_n++; }
+   if(StringLen(NzdJpySymbol) > 0){ g_feed[g_n]="NZDJPY"; g_broker[g_n]=NzdJpySymbol; g_n++; }
+   if(StringLen(AudUsdSymbol) > 0){ g_feed[g_n]="AUDUSD"; g_broker[g_n]=AudUsdSymbol; g_n++; }
    if(StringLen(GoldSymbol)   > 0){ g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;   g_n++; }
    if(StringLen(IndexSymbol)  > 0){ g_feed[g_n]="US500";  g_broker[g_n]=IndexSymbol;  g_n++; }
    if(StringLen(TechSymbol)   > 0){ g_feed[g_n]="USTEC";  g_broker[g_n]=TechSymbol;   g_n++; }

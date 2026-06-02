@@ -21,7 +21,12 @@ HORIZON_DAYS = 10        # holding period that maximised the bounce
 # the signal GENERALISES across risk assets - so we spread across the robust ones rather
 # than bet one. The EA maps these to its broker's symbol names.
 INSTRUMENTS = [
-    {"symbol": "AUDJPY", "asset": "fx",        "note": "steadiest (win 88%, +ve every regime)"},
+    # AUD/NZD risk-pair complex: the 2016-26 cross-section showed the edge travels with the
+    # RISK-ON currency (AUD/NZD), not the JPY leg - all of these are significant (t 2.7-3.2),
+    # while havens/non-risk pairs (USDJPY/CHFJPY/EURUSD) are flat. So spread across the factor.
+    {"symbol": "AUDJPY", "asset": "fx",        "note": "win 66%, t=2.93 (2016-26)"},
+    {"symbol": "NZDJPY", "asset": "fx",        "note": "t=3.18 - strongest of the cross-section"},
+    {"symbol": "AUDUSD", "asset": "fx",        "note": "t=2.72 - same factor, USD-funded"},
     {"symbol": "XAUUSD", "asset": "commodity", "note": "gold - robust (+ve every regime)"},
     {"symbol": "US500",  "asset": "index",     "note": "S&P 500"},
     {"symbol": "USTEC",  "asset": "index",     "note": "Nasdaq 100"},
@@ -29,7 +34,8 @@ INSTRUMENTS = [
 ]
 
 # Feed symbol -> price-table (Yahoo) symbol, for the trend filter.
-PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "XAUUSD": "GC=F", "US500": "SPY", "USTEC": "QQQ", "XAGUSD": "SI=F"}
+PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "NZDJPY": "NZDJPY=X", "AUDUSD": "AUDUSD=X",
+                "XAUUSD": "GC=F", "US500": "SPY", "USTEC": "QQQ", "XAGUSD": "SI=F"}
 # Equity index legs FAILED the 2022 bear -> only fire their capitulation-long in an uptrend.
 # AUDJPY + metals were all-weather in the multi-regime test, so they are NOT gated.
 GATE_TREND = {"US500", "USTEC"}
