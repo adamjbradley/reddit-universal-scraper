@@ -109,7 +109,7 @@ def capitulation_state():
 # slot in here and the EA selects by strategy tag.
 STRATEGIES = [
     {"name": "retail_fear", "status": "validated", "enabled": True,
-     "desc": "long risk when retail capitulates (RRAI<=0.15)+VIX>=18; equity legs gated to uptrend"},
+     "desc": "long risk when retail capitulates (RRAI<=0.15)+VIX>=18; equity legs gated to fear_z confirmation"},
     {"name": "euphoria_short", "status": "regime-gated", "enabled": True,
      "desc": "short index ONLY when retail euphoria (RRAI>=0.85) coincides with a downtrend"},
 ]
@@ -121,9 +121,12 @@ def _strategy_signals(name, st):
         out = []
         for ins in INSTRUMENTS:
             tr = _trend(ins["symbol"])
-            # equity legs need BOTH an uptrend AND independent fear confirmation (they're
-            # dead otherwise); AUDJPY/metals are all-weather and ungated.
-            if ins["symbol"] in GATE_TREND and (tr < 0 or fz < FEAR_MIN):
+            # equity legs need independent FEAR confirmation (fear_z); the 200-DMA trend filter
+            # was DROPPED (2026-06-03): the 2016-2026 excess study showed fear-only is episode-
+            # significant (SPY t=2.77/QQQ t=2.37) while trend+fear was ~0 excess - the trend gate
+            # strips the contrarian buy-fear-in-a-downtrend bounces that carry the edge. (`tr` is
+            # still reported for context.) AUDJPY/metals are all-weather and ungated.
+            if ins["symbol"] in GATE_TREND and fz < FEAR_MIN:
                 continue
             out.append({"symbol": ins["symbol"], "asset": ins["asset"], "side": "long",
                         "strength": st["strength"], "horizon_days": HORIZON_DAYS,
