@@ -109,6 +109,7 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
   - **Reconciliation (why MT5 said "loss" and this says "small win"):** MT5 sums *absolute* P&L and holds one position at a time, so a few COVID-cluster trades dominate the dollar total (−$1045); the excess frame means-averages independent trades, where fear is mildly +ve. Both are correct for their question — for *signal research* the excess frame is the right one, so the earlier "fear-gate is a drag" was a frame artifact.
   - **The genuine tension:** fear → better *timing/excess* but worse *drawdown* (COVID knives); trend → better *drawdown* but worse *excess*. The live `trend AND fear` gets the worst of both for excess.
   - **Recommendation:** keep the gate 🟡 (positive but insignificant). If we ever optimise the equity legs for excess, use **fear-only, not trend+fear**; AUDJPY (the one significant edge, +0.26 t=2.04) stays **ungated** — confirmed correct. (User chose to leave the live gate unchanged for now; this is logged for when we revisit.)
+  - **🔢 Power / effective sample (day vs episode — the divergence IS the verdict):** the 94 fear-days are *not* 94 independent obs — overlapping 10d windows + episode clusters. Treated as **days**, fear-only is t=0.64 (SPY)/0.71 (QQQ); collapsed to **independent episodes** (~40, one vote each) it's **t=2.28 (SPY)/1.85 (QQQ)**. The gap is driven almost entirely by the **COVID-2020 cluster** (~10+ losing fear-days → one episode vote), so the effect is *positive across most episodes but fragile* — and SPY (2.28) vs QQQ (1.85) disagreeing on near-identical instruments over the same episodes says we're at the **noise floor**, not a stable edge. **Data to settle it:** day-level needs ~**9× more** obs for p<0.05 (~19× for 80% power) — impractical (~40+ yrs at ~15-20 fear-days/yr); the real lever is **independent fear episodes**, and the cheapest source is *backward* (Wikipedia fear data already reaches 2015) — **extending the RRAI/capitulation series to 2016-2017 adds the 2018 Volmageddon + Q4-2018 episodes** (price coverage starts 2016-05). [In progress — see changelog.]
 - **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). Equity legs gated by trend + `fear_z`.
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
@@ -260,6 +261,13 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **Power analysis + RRAI history extension (in progress).** Quantified the fear-gate's
+  data need: the 94 fear-days are ~40 independent episodes; day-level it's t≈0.6 (needs ~9× more obs for
+  p<0.05, ~19× for power — impractical), but episode-level it's t=2.28 (SPY)/1.85 (QQQ) — significant-but-
+  fragile (COVID-cluster-driven; SPY≠QQQ ⇒ noise floor). Cheapest lever = more *independent fear episodes*
+  via **backward** history (Wikipedia fear data already reaches 2015). Extended study prices to max and
+  **kicked off the RRAI aggregate backfill 2016-06→2020** (wallstreetbets/stocks/pennystocks) to add the
+  2018 Volmageddon + Q4-2018 episodes; will re-run `backtest.fear_gate` on the longer series when it lands.
 - **2026-06-02** — **Committed EXCESS study settles the fear-gate (`backtest/fear_gate.py`).** The proper
   frame (mean excess vs buy-&-hold, the +0.36pp's own metric). Three findings: (1) the +0.36pp
   **reproduces** as a point estimate (SPY +0.32 / QQQ +0.41 fear-only excess) — not fabricated; (2) it's
