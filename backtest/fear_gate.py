@@ -64,16 +64,29 @@ def _trend_up_fn(px):
     return tu
 
 
+def _vix_on_fn(px):
+    """Return vix_on(day): the latest ^VIX close as-of `day` (the live VIX gate input)."""
+    import bisect
+    vdates, vclose = px.get("^VIX", ([], []))
+
+    def von(day):
+        i = bisect.bisect_right(vdates, day[:10]) - 1
+        return vclose[i] if i >= 0 else None
+    return von
+
+
 def capitulation_sets(px=None):
-    """The four point-in-time capitulation date-sets. Shared by the MT5 exporter and this study."""
+    """Point-in-time capitulation date-sets. Shared by the MT5 exporter and this study.
+    `vixgated` = the LIVE trigger (rrai<=0.15 AND VIX>=18); the FX/gold basket trades this set."""
     px = px or _load_prices()
     c = get_connection()
     caps = [r["date"][:10] for r in c.execute(
         "SELECT date FROM aggregate_daily WHERE rrai_pct<=0.15 ORDER BY date").fetchall()]
     c.close()
-    fz, tu = _fear_z_fn(), _trend_up_fn(px)
+    fz, tu, vix = _fear_z_fn(), _trend_up_fn(px), _vix_on_fn(px)
     return {
         "baseline":  caps,
+        "vixgated":  [d for d in caps if (vix(d) or 0) >= 18.0],   # the LIVE trigger
         "fear":      [d for d in caps if fz(d) >= FEAR_MIN],
         "trend":     [d for d in caps if tu(d)],
         "trendfear": [d for d in caps if tu(d) and fz(d) >= FEAR_MIN],

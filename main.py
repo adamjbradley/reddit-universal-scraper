@@ -1498,6 +1498,7 @@ Commands:
         from backtest.fear_gate import capitulation_sets
         sets = capitulation_sets()
         out = {"baseline": "data/rrai_capitulation.csv",
+               "vixgated": "data/rrai_capitulation_vix.csv",   # the LIVE trigger (rrai<=0.15 & VIX>=18)
                "fear": "data/rrai_capitulation_feargate.csv",
                "trend": "data/rrai_capitulation_trend.csv",
                "trendfear": "data/rrai_capitulation_trendfear.csv"}
