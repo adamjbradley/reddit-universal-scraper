@@ -297,7 +297,32 @@ whether crypto leads equities / risk-appetite. **It doesn't — it's coincident:
 
 **Takeaway:** crypto's value is NOT macro timing (it's a redundant coincident risk-appetite read). It's worth keeping only as its own **pump/meme universe** (CryptoMoonShots/SatoshiStreetBets) for the `distribution_short`/pump signals. Do not fold it into the RRAI.
 
+## ★ Cross-asset generalization map (2026-06-03) — it's a RISK-APPETITE / FEAR-REVERSAL factor
+Capitulation-long (rrai≤0.15 & VIX≥18, 10d, excess vs buy-and-hold) tested across asset classes.
+The signal fires wherever the instrument is a clean **risk-on** or **fear-bid** play, and is flat
+everywhere else — the pattern of winners *and* losers is mechanistically coherent (= a real factor):
+
+| asset class | works? | evidence |
+|---|---|---|
+| **Risk-on FX** (AUD/NZD) | ✅ **strongest** | AUDJPY t=2.93, NZDJPY t=3.18, AUDCHF 2.83, AUDUSD 2.72, NZDCHF 2.58, ZARJPY 2.32 (EM, noisier) |
+| **Safe-haven metals** | ✅ gold | Gold +0.43% t=2.03; Silver +0.76% t=1.72 (lumpy) |
+| Equity indices (US/AUD/JP) | ❌ weak | Nikkei +0.62 t=1.93 (best); S&P t=0.90, Nasdaq 1.13; **ASX 200 t=0.08 (flat)** |
+| Growth commodities | ❌ none | Copper t=0.68, Platinum 0.87, **Oil −0.10** |
+| **Controls** (should be flat) | ✅ flat | **AUDNZD (risk/risk) t=1.11**; USDJPY 1.02, CHFJPY 1.37, EURUSD 1.44 |
+
+**Punchlines:** (1) the AUD *currency* carries the edge (t=2.9) but the AUD *equity index* (ASX) is flat
+(t=0.08) — it's an FX/metals phenomenon, not equities. (2) **AUDNZD flat** is the cleanest proof: two
+risk-on currencies cancel the factor. (3) It's ONE factor, so more instruments = diversification *within*
+it (diminishing), not new alpha; EM/growth-commodity legs add cost/tail-risk for little gain.
+**MT5 absolute check** (long-only, ungated, BaseLots=1.0): AUDJPY net +$10.4k (PF 1.14) but AUDUSD ~flat in
+dollars (it *declined*, so +excess ≠ +absolute) and 60%+ DD → deployable version needs the VIX gate + vol-target sizing.
+
 ## Changelog
+- **2026-06-03** — **Cross-asset generalization map + MT5 FX backtest.** Capitulation-long tested across
+  FX/indices/commodities: it's a **risk-appetite/fear-reversal factor** — strong in risk-on FX (AUD/NZD,
+  EM-ish), works in gold/silver, **flat in equity indices (incl. ASX t=0.08) and growth commodities
+  (copper/oil)**; AUDNZD control flat. MT5 tester (D1, 2016-26, ungated): AUDJPY +$10.4k/PF 1.14, AUDUSD
+  ~flat-$ (declined, +excess only), 60% DD → needs VIX gate + vol-target to deploy.
 - **2026-06-03** — **Cross-sectional FX validation → broadened the basket.** Tested capitulation-long across
   the yen-cross + risk-pair complex (2016-26, VIX-gated). The edge is a **risk-on-currency factor**: every
   AUD/NZD pair is significant (NZDJPY t=3.18, AUDJPY 2.93, AUDCHF 2.83, AUDUSD 2.72) *independent of the
