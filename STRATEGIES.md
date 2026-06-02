@@ -27,7 +27,7 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 | `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Validated | **excess vs buy-&-hold**, generalises across a risk-on basket: Gold +0.6 / AUDJPY +0.5 (win 88%) / SP500 +0.2pp robust; Silver +2.2pp lumpy; VIX gate ~4× | live via MT5 `RedditMacro_EA`; vol-target sizing; longer history |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
-| `dump_fade_DELETION_short` | Equity | 🧪 Untested | awaiting coverage (`gone_frac>0` in 267 rows) | re-backtest at ~30–40% author coverage; express via puts |
+| `dump_fade_DELETION_short` | Equity | ✅ Thesis validated (forensic) / ⚠️ not yet PIT-tradeable | **gone≥0.20 → +14.3%/10d short, 83% win, t=2.57, +ve in all 3 regimes**; control proves the gate flips the trade (un-gated pump short *loses* −10.8%, t=−2.22) | make tradeable: finish author sweep to power the PIT `young_frac` gate (now n=3–7, inconclusive); express via puts |
 | `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
 | `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
 | `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
@@ -41,8 +41,9 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 | `/signals` feed (multi-strategy, json\|mt5) | ✅ Done | strategy-tagged; live, currently **flat** |
 | Macro strategy R&D (`backtest/macro_research.py`) | ✅ Done | only `retail_fear` beats buy-&-hold; momentum/froth no edge |
 | MT5 framework (`SignalClient.mqh` + `RedditMacro_EA.mq5`) | ✅ Done | strategy-selectable thin client; demo-only |
-| Author profiling coverage | 🔄 8.7% | 4,143 / 47,742; 184 gone (116 del / 68 susp); target ~40% |
-| Deletion-gated short testability | 🔄 Surfacing | `gone_frac>0` in 267 feature rows; too sparse to trade yet |
+| Author profiling coverage | 🔄 20% | 30,015 / 152,040; 2,973 gone (2,087 del / 886 susp); target ~40% |
+| Deletion-gated short testability | ✅ Forensically validated | gone≥0.20 short +14.3%/10d, t=2.57 (n=30); PIT `young_frac` proxy still sparse (n=3–7) |
+| Short-interest / squeeze data (FINRA Reg SHO) | ✅ Done | `scraper/finra.py`: 475k rows / 5,693 tickers; **z-score** screen (abs level is MM noise, median 0.49) |
 | Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
 | Equity/options paper client (Alpaca) | 💡 Planned | not started |
 
@@ -105,15 +106,22 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 - **Thesis:** broad attention spikes mean-revert down (inverse of the robust `organic_long` loss).
 - **Result:** net +0.83%, but **flips in P3** (win 46%) — the reversion is real but shorting costs + recent weakening eat it. **Marginal.** Revisit via **puts** (cheaper than borrow) and with a VIX/vol gate.
 
-### 🧪 `dump_fade_DELETION_short` — short a pump whose promoters vanished *(THE thesis)*
-- **Thesis:** concentrated pump + promoters now **deleted/suspended** → manufactured → fade the collapse. This is the original A2 idea, and the *reason* we track account lifecycle.
-- **Status:** built & wired; **awaiting author coverage**. As of 2026-06-01: 8% of 47k authors profiled, 184 gone accounts found (~4.7% base rate), `gone_frac>0` in 267 feature rows — surfacing but too sparse to intersect the pump filter yet. Background `author_age_backfill` sweep grinding; scheduler rebuilds features each cycle.
-- **Next:** re-run `python main.py --backtest` as coverage climbs (~30–40%); consider prioritising profiling of authors on pump-candidate tickers to make it testable sooner. Express via puts.
+### ✅ `dump_fade_DELETION_short` — short a pump whose promoters vanished *(THE thesis — forensically validated)*
+- **Thesis:** concentrated pump + promoters now **deleted/suspended** → manufactured → fade the collapse. The original A2 idea, and the *reason* we track account lifecycle.
+- **Result (2026-06-02, 20% author coverage, h=10, market-neutral, 75bps + 8bps/day borrow):**
+  | gate | n | net short | win | t | regimes |
+  |---|---|---|---|---|---|
+  | `gone_frac≥0.10` | 33 | **+10.0%** | 81.8% | 1.51 | −1.2 / +19.9 / +11.4 |
+  | `gone_frac≥0.20` | 30 | **+14.3%** | 83.3% | **2.57** | +11.4 / +27.7 / +3.9 |
+  | **control:** pumps w/ promoters *still here* (`gone=0`) | 202 | **−10.8%** | 36.1% | −2.22 | −30.7 / −0.6 / −1.1 |
+  - The gate **flips the sign of the trade** (~+25pp spread). Un-gated concentrated pumps are *un-shortable* (they continue / squeeze); only the ones whose promoters vanish collapse. The deletion is doing the work, not pump-selection. Positive across all 3 regimes at gone≥0.20.
+- **⚠️ Not yet point-in-time tradeable.** `gone_frac` uses *hindsight*: Reddit exposes no deletion timestamp, so "gone" means "gone as of our latest sweep" — unknowable at the pump date. The PIT-available leading proxy is `young_frac` (account age at post time), but it's currently too sparse to conclude (n=3–7, and the few events lean the wrong way).
+- **Path to tradeable:** (1) **finish the author sweep** (20%→40%+) to power the `young_frac` PIT test; (2) failing that, a **live deletion-monitor** rule — `author_status_revalidate` already detects deletions forward; short on deletion-*confirmation* within K days of a fresh pump, capturing the back half of the collapse. Express via **puts** (defined risk vs squeeze tails; many are HTB/no-borrow).
 
 ---
 
 ## 3. Idea backlog (💡 not yet built)
-- **Squeeze setup (long):** Reddit squeeze chatter (Shortsqueeze/SqueezePlays) **+ short-interest / float / borrow-fee** → squeezable. *Needs external SI/borrow data.*
+- **Squeeze setup (long):** Reddit squeeze chatter (Shortsqueeze/SqueezePlays) **+ short pressure** → squeezable. *Partially built:* `scraper/finra.py` + `squeeze_screen()` flag tickers with an anomalous **z-score jump** in daily short-ratio vs their own baseline (HTZ/GME currently surface). *Still needs* true SI%/float/days-to-cover (FINRA **bi-monthly short-interest** report) + borrow-fee for the level; the daily file's absolute level is market-maker noise. *Not yet backtested.*
 - **Options-flow signal:** parse contract-level chatter (unusual_whales/options) → retail-gamma/positioning proxy. *Needs contract parsing.*
 - **Hype-cycle lifecycle:** model attention as nascent→acceleration→peak→fade; long the *organic* acceleration, fade the *concentrated* peak. Breadth-vs-concentration is the discriminator.
 - **Conditioned sentiment extremes (single-name):** linear sentiment is dead, but *extreme concentrated euphoria at a price high* (short) / *capitulation after a sharp drop* (bounce) may be non-linear edges.
@@ -127,10 +135,10 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 | Gap | Unblocks |
 |---|---|
 | **Intraday prices** (have EOD only) | timing pump/dump entries/exits (they move intraday) |
-| **Short interest / float / borrow fee** | squeeze setup; short feasibility |
+| **Short interest / float / borrow fee** | squeeze *level* (FINRA daily short-*volume* now in via `scraper/finra.py`, but it's MM noise at the level; need bi-monthly SI%/float + borrow) |
 | **Options chains / IV** | options expression; options-flow signal |
 | **Longer history** (data-limited to ~12mo) | true multi-regime validation of the RRAI overlay |
-| **Author coverage** (8% → target ~40%+) | the deletion-gated short *(in progress)* |
+| **Author coverage** (20% → target ~40%+) | a *point-in-time tradeable* deletion short — thesis already forensically validated; PIT `young_frac` proxy needs more coverage |
 
 ## 5. Execution stack
 - **`/signals` feed** (`analytics/signals.py`, `GET /signals` json\|mt5) — live, serves the capitulation overlay. ✅
@@ -190,10 +198,10 @@ but-unvalidated screens. Do NOT size up on these as-is.
 |---|---|---|
 | **Intraday prices** (we have EOD only) | pump entry/exit timing; fresh-pump fade execution (pumps move intraday) | not collected |
 | **Historical penny-stock prices + per-ticker features** | multi-regime validation of smallcap_pump_fade & biotech (only 2025-26 exists) | delisted pennies → Yahoo gaps; per-ticker feature_daily only recent |
-| **Short interest / float / borrow fee** | squeeze setups; realistic short cost/feasibility | needs Ortex/FINRA-type feed |
+| **Short interest / float / borrow fee** | squeeze setups; realistic short cost/feasibility | FINRA daily short-*volume* in (`scraper/finra.py`); still need SI%/float/borrow (Ortex / FINRA bi-monthly SI) |
 | **Options chains / IV** | express fades via PUTS (only sane way to short pennies); options-flow signal | not collected |
 | **More years of RRAI history** | tighten the macro edge (effective n ≈ a few dozen fear episodes) | Reddit/arctic-shift depth ~2017+ |
-| **Broader author coverage** (~8% profiled) | the deletion/young-account manipulation tells (currently starved) | rate-limited Reddit /about sweep |
+| **Broader author coverage** (~20% profiled) | a *PIT-tradeable* deletion/young-account short (thesis already validated forensically; `young_frac` proxy starved) | rate-limited Reddit /about sweep |
 | **Independent sentiment sources** (StockTwits, news, Discord, crypto + AU subs) | independent episodes → real effective-sample growth without waiting calendar time | not integrated (AU track building) |
 | **Real transaction-cost data** (per-instrument spreads/borrow) | trustworthy net returns (small-cap costs are modelled/optimistic) | not sourced |
 
@@ -205,6 +213,13 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **Deletion-gated short forensically validated.** Author coverage 8%→20% (2,973 gone).
+  Re-backtest: `gone_frac≥0.20` → +14.3%/10d short (83% win, t=2.57, +ve all regimes); the *control*
+  (un-gated concentrated pumps) *loses* −10.8% — so the deletion gate flips the trade, confirming the
+  A2 thesis. **Caveat:** `gone_frac` is hindsight (no Reddit deletion timestamp) → not yet PIT-tradeable;
+  the `young_frac` PIT proxy is still too sparse (n=3–7). Also shipped `scraper/finra.py` (FINRA Reg SHO
+  daily short-volume, 475k rows) + z-score `squeeze_screen()` — learned the *absolute* short-ratio is
+  market-maker noise (median 0.49), so the screen uses per-ticker z-score anomaly + chatter.
 - **2026-06-01** — Instrument scan (17 MT5 instruments). `retail_fear` generalises across the
   risk-on basket; commodities express it best (Silver +2.2pp lumpy, Gold +0.6pp robust), AUDJPY
   steadiest. Oil/crypto dropped. Basket = AUDJPY + Gold + indices + small Silver; EA + feed updated.
