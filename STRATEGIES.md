@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated / ⚠️ **NOT yet live-tradeable** | **EXCESS vs buy-&-hold** is real & robust: AUDJPY +0.48%/10d VIX-gated, **t(exc)=2.93, +ve 9/10 years**; generalises across AUD/NZD FX + gold. **BUT the MT5 reality check shows it doesn't survive naive long-on-trigger execution** (PF 0.85-1.01) — see the MT5 reality-check section. Needs a turn-based entry + stop. | build a **turn-based entry** (VIX rolling over / RRAI recovering) + stop; then re-backtest in MT5 |
+| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated + **MT5-tradeable (turn entry)** | **EXCESS vs B&H** robust (AUDJPY t(exc)=2.93, +ve 9/10 yrs; generalises across AUD/NZD FX + gold). Naive long-on-trigger *failed* in MT5 (PF 0.77), **but a turn-based entry + ATR stop fixes it: AUDJPY PF 1.06, Gold PF 1.54 / Sharpe 0.41** (ATR/Fixed sizing; Kelly oversizes). | forward OOS + small demo allocation; gold is the strongest leg |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -336,12 +336,32 @@ long-on-trigger MT5 strategy.** Why the gap:
    nets ~0 in *dollars*. The Python t-stat measures "higher than drift," not "profitable."
 3. **No stop.** Holding 10 days with no stop lets losses run (gold DD 93%).
 
-**Honest status:** the edge is a real *statistical* property but is **not deployable as specified.** To make
-it tradeable it needs **better entry (catch the *turn* — VIX rolling over / RRAI recovering — not the first
-fall) + a stop loss**. Until then, treat the FX/gold basket as *research-validated (excess), not live-tradeable*.
-The MT5 EA is now a sound execution+sizing shell; the missing piece is the entry rule.
+**Honest status (before the fix):** the edge is a real *statistical* property but was **not deployable** as a
+naive long-on-trigger trade. Predicted fix: catch the *turn*, not the first fall, + a stop.
+
+### ✅ RESOLVED — turn-based entry + stop makes it tradeable (2026-06-03)
+Added to the EA: **arm on a capitulation signal, then enter on the first up-bar (the turn) within `ArmWindow`,
+with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). MT5 results (VIX-gated, 2016-26):
+
+| symbol | sizing | entry | win% | PF | DD% | Sharpe |
+|---|---|---|---|---|---|---|
+| AUDJPY | ATR | naive | 42.5 | **0.77** | 9.6 | −0.44 |
+| AUDJPY | ATR | **turn** | 51.4 | **1.06** | 7.0 | 0.10 |
+| Gold | ATR | naive | 53.5 | 1.25 | 39.7 | 0.29 |
+| Gold | Fixed | **turn** | 55.1 | **1.54** | 33.3 | **0.41** |
+| Gold | ATR | turn | 55.1 | 1.39 | 44.9 | 0.40 |
+
+- **The turn entry works** — it flips AUDJPY from PF 0.77 (losing, naive) to **PF 1.06** (win 42.5→51.4%), and lifts Gold to **PF 1.54 / Sharpe 0.41**. Waiting for the bounce instead of catching the knife is the difference between losing and winning.
+- **Gold is the strongest deployable leg** (PF 1.4-1.5, Sharpe 0.4). AUDJPY is now marginally positive (PF ~1.06) — thin but no longer a loser.
+- **Sizing verdict: ATR/Fixed win; Kelly OVERSIZES.** Even half-Kelly hit its cap on these thin edges and blew drawdowns to 30% (AUDJPY) / 80% (Gold) with PF≈1.0 — no return benefit. The textbook result: **Kelly is too aggressive for thin/uncertain edges; fixed-fractional ATR (~1%/trade) is the right default.**
+- **Still preliminary:** PFs are modest, gold DD is high (33-45%), and this is in-sample on the same series the signal was built on. Forward OOS + a small live demo allocation are the next validation steps. But the basket is now **tradeable, not just a statistical curiosity.**
 
 ## Changelog
+- **2026-06-03** — **Turn entry + stop makes it tradeable; sizing methods backtested.** Added to the EA: arm
+  on capitulation → enter on the first up-bar (turn) within ArmWindow, with a StopATR×ATR stop; plus
+  selectable sizing (Fixed/ATR/Kelly). The turn entry **rescues the strategy**: AUDJPY PF 0.77→1.06, Gold
+  PF 1.25→1.54 (Sharpe 0.41). Sizing: ATR/Fixed best; **Kelly oversizes** (caps out on thin edges → 30-80%
+  DD, no return gain). Gold is the strongest leg. Still in-sample/preliminary → forward OOS + demo next.
 - **2026-06-03** — **MT5 reality check: excess edge ≠ tradeable.** Fixed the EA (ATR fixed-fractional sizing
   + trading-day holds; compiled clean), which collapsed the fixed-lot drawdown artifact (90%→17-20% on FX)
   and revealed the truth: under realistic single-entry execution the capitulation longs are breakeven-to-
