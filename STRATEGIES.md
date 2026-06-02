@@ -61,8 +61,9 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ## Asset-class reality (what this data can/can't trade)
 - **Small/micro-cap & meme equities** — primary signal (retail flow moves price).
 - **Single-name options** — primary *expression* (convex longs, defined-risk shorts).
-- **Index / risk-FX** — *macro overlay only* (retail positioning as a contrarian factor).
-- **FX majors / "Reddit sentiment on SPY as direction"** — no edge; don't build it.
+- **Risk-FX (AUD/NZD complex)** — the **primary macro expression**: retail capitulation → contrarian bounce, validated across the cross-section (AUDJPY/NZDJPY/AUDUSD/AUDCHF, t 2.7-3.2). The cleanest tradeable read of the risk-appetite factor RRAI measures.
+- **Index / metals** — *macro overlay* (Gold robust; equities the weak expression, t≈1).
+- **Haven/non-risk FX (USDJPY, CHFJPY, EURUSD) / "Reddit sentiment on SPY as direction"** — no edge; don't build it (they're the controls that confirm the factor).
 
 ---
 
@@ -81,6 +82,22 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
 - **Spec (shipped):** long when `rrai_pct ≤ 0.15` **AND** `VIX ≥ 18`; hold ~10d; size by extremity; **fear-side only**.
 - **Evidence (12mo, net, 10d):** **excess over buy-&-hold** SPY +0.17pp / QQQ +0.23pp / **AUDJPY +0.47pp** (win 88%); `bear_extreme` +0.24/+0.32/+0.36pp corroborates. **VIX gate ~4×'d it** (SPY +1.56%/10d in fear vs +0.42% calm). Modest **timing tilt**, not standalone alpha (buy-&-hold already won 66–75%).
 - **Instrument scan (17 MT5 instruments, 10d excess vs buy-&-hold):** the signal **generalises across the risk-on basket** — Silver +2.22pp (lumpy, one big rally → size small), Gold +0.59pp (robust, +ve every regime), AUDJPY +0.47pp (steadiest, win 88%), SP500 +0.17pp. Oil (+1.82pp but one-episode) and crypto (BTC net-negative) **dropped**. Generalisation across assets is itself evidence it's a real risk-appetite signal.
+- **★ Cross-sectional FX validation (2026-06-03, 2016-26, VIX-gated) — proves it's a RISK-ON-CURRENCY factor, not an AUDJPY fluke.** Ran capitulation-long across the yen-cross + risk-pair complex. The edge travels with the **risk-on currency (AUD/NZD)**, *independent of the funding leg* — and the **controls fail**, which is the real proof:
+
+  | pair | character | excess | t(exc) |
+  |---|---|---|---|
+  | **NZDJPY** | risk-on JPY cross | +0.43% | **+3.18** |
+  | **AUDJPY** | risk-on JPY cross | +0.48% | **+2.93** |
+  | **AUDCHF** | risk vs CHF-haven | +0.41% | **+2.83** |
+  | **AUDUSD** | risk pair (no JPY) | +0.43% | **+2.72** |
+  | EURJPY | risk-ish | +0.25% | +2.70 |
+  | NZDUSD | risk pair | +0.35% | +2.33 |
+  | Nikkei ^N225 | high-beta JP *equity* | +0.62% | +1.93 |
+  | **USDJPY** | JPY cross, USD~haven | +0.12% | **+1.02** (flat) |
+  | **CHFJPY** | CONTROL haven/haven | +0.13% | **+1.37** (flat) |
+  | **EURUSD** | CONTROL non-risk | +0.14% | **+1.44** (flat) |
+
+  **Read:** every AUD/NZD pair is significant (t 2.7–3.2) regardless of funding leg; the three pairs with *no* risk-on leg (USDJPY/CHFJPY/EURUSD) are the three weakest. **It's not a JPY thing** — JPY is just a clean funding leg; the Nikkei works because it's high-beta *risk*, not because it's Japanese. Equities stay the weak expression (SPY t=0.90, QQQ t=1.13). The clean cross-section (right pairs fire, controls don't) is strong evidence of a genuine factor → **trade the basket, not one pair.**
 - **🟡 Independent fear-confirmation gate (Wikipedia, LIVE — but now DOUBTFUL):** the **equity** legs (US500/USTEC) additionally require an *independent* fear spike — `fear_z ≥ 0.5`, the z-score of Wikipedia fear-page attention (Stock_market_crash / Recession / Bear_market views) vs the trailing ~30d — **AND** a 200-DMA uptrend. Original rationale: SPY capitulation *alone* doesn't beat buy-and-hold (master backtest excess −0.05); an *ad-hoc* run reported **+0.36pp/10d when `fear_z` confirms vs ~−0.01 ungated**, and fear-attention is **1.32× higher on capitulation days** (`DATA_PLAN.md`). Wired live in `analytics/signals.py` (`_fear_z`, `FEAR_MIN`; `fear_z` in `/signals`).
   - **🔬 MT5 Strategy-Tester A/B (US500, D1, 2020–2026, long-only, real spread/swap; `mql5/RedditMacro_US500_*.ini`, dates via `python main.py --export-signals`).** This tests the gate as an **absolute long-only rule** (NOT excess-vs-buy-&-hold):
 
@@ -118,7 +135,7 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
     | QQQ | +0.41 → **+0.80** | 0.71 → 1.91 | 1.85 → **2.37** |
 
     **Both equity legs are now episode-level significant (t≈2.4-2.8) AND agree** — the earlier SPY≠QQQ noise-floor red flag is gone. Day-level is still only marginal (1.6-1.9), so not fully nailed, but this is a real upgrade from "fragile/unproven." The trend filter conclusion **hardens**: `trend+fear` (live) is still ≈0 excess (SPY +0.10/QQQ +0.11) ⇒ **drop `trend`, use fear-only** on the equity legs. AUDJPY confirmed best ungated (baseline +0.21 t=2.00; fear-gating *hurts* → +0.09).
-- **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). Equity legs gated by trend + `fear_z`.
+- **Expression:** a **diversified risk-on basket** — now **AUDJPY + NZDJPY + AUDUSD** (the AUD/NZD risk-pair complex) + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). FX/metal legs ungated; **equity legs gated by `fear_z` only** (the 200-DMA trend filter was dropped 2026-06-03 — it killed the excess; see the fear-gate row).
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
 
@@ -281,6 +298,13 @@ whether crypto leads equities / risk-appetite. **It doesn't — it's coincident:
 **Takeaway:** crypto's value is NOT macro timing (it's a redundant coincident risk-appetite read). It's worth keeping only as its own **pump/meme universe** (CryptoMoonShots/SatoshiStreetBets) for the `distribution_short`/pump signals. Do not fold it into the RRAI.
 
 ## Changelog
+- **2026-06-03** — **Cross-sectional FX validation → broadened the basket.** Tested capitulation-long across
+  the yen-cross + risk-pair complex (2016-26, VIX-gated). The edge is a **risk-on-currency factor**: every
+  AUD/NZD pair is significant (NZDJPY t=3.18, AUDJPY 2.93, AUDCHF 2.83, AUDUSD 2.72) *independent of the
+  funding leg*, while the no-risk-leg controls are flat (USDJPY t=1.02, CHFJPY 1.37, EURUSD 1.44) — the
+  controls failing is the proof it's real, not data-mining. It's NOT a JPY thing (JPY is just a clean
+  funding leg; Nikkei works as high-beta risk, not as "Japanese"). **Broadened the live `retail_fear` FX
+  basket to AUDJPY + NZDJPY + AUDUSD** (`signals.py` + MT5 EA).
 - **2026-06-03** — **Deletion short DIED at full coverage; AUDJPY re-confirmed; sweep de-crypto'd.**
   (1) Targeted-profiled all 487 equity pump-authors (25%→100% relevant coverage). The deletion short
   **flipped negative** — gone≥0.20 → −19.3%/10d (n=87), young_frac short −39%→−87% — dominated by squeeze
