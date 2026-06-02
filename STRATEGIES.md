@@ -135,7 +135,7 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
     | QQQ | +0.41 → **+0.80** | 0.71 → 1.91 | 1.85 → **2.37** |
 
     **Both equity legs are now episode-level significant (t≈2.4-2.8) AND agree** — the earlier SPY≠QQQ noise-floor red flag is gone. Day-level is still only marginal (1.6-1.9), so not fully nailed, but this is a real upgrade from "fragile/unproven." The trend filter conclusion **hardens**: `trend+fear` (live) is still ≈0 excess (SPY +0.10/QQQ +0.11) ⇒ **drop `trend`, use fear-only** on the equity legs. AUDJPY confirmed best ungated (baseline +0.21 t=2.00; fear-gating *hurts* → +0.09).
-- **Expression:** a **diversified risk-on basket** — now **AUDJPY + NZDJPY + AUDUSD** (the AUD/NZD risk-pair complex) + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). FX/metal legs ungated; **equity legs gated by `fear_z` only** (the 200-DMA trend filter was dropped 2026-06-03 — it killed the excess; see the fear-gate row).
+- **Expression (ALPHA-ONLY basket, trimmed 2026-06-03):** **AUDJPY + NZDJPY + AUDUSD + Gold (XAUUSD)** — the only legs with statistically-tradable excess (all t≥2). **Dropped:** US500/USTEC (t≈1, no alpha) and Silver (t=1.72, lumpy). All four are ungated. `euphoria_short` **parked** (it traded the dropped indices; −1.84 all-period excess). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). The fear-gate is now moot for the live basket (no equity legs) but kept as research.
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
 
@@ -318,6 +318,10 @@ it (diminishing), not new alpha; EM/growth-commodity legs add cost/tail-risk for
 dollars (it *declined*, so +excess ≠ +absolute) and 60%+ DD → deployable version needs the VIX gate + vol-target sizing.
 
 ## Changelog
+- **2026-06-03** — **Trimmed live basket to tradable-alpha only.** Per the cross-asset map, kept the four
+  legs with significant excess (t≥2): **AUDJPY (2.93), NZDJPY (3.18), AUDUSD (2.72), Gold (2.03)**. Dropped
+  US500/USTEC (t≈1) and Silver (1.72, lumpy); parked `euphoria_short` (traded the dropped indices, −1.84
+  excess). `signals.py` INSTRUMENTS + MT5 EA basket trimmed 7→4; GATE_TREND cleared. Deployed live.
 - **2026-06-03** — **Cross-asset generalization map + MT5 FX backtest.** Capitulation-long tested across
   FX/indices/commodities: it's a **risk-appetite/fear-reversal factor** — strong in risk-on FX (AUD/NZD,
   EM-ish), works in gold/silver, **flat in equity indices (incl. ASX t=0.08) and growth commodities
