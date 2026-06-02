@@ -33,19 +33,17 @@ input string AuthBearerToken = "";              // LIVE bearer token (optional)
 input string StrategyTag     = "retail_fear";   // LIVE strategy to trade
 input int    PollSeconds     = 300;             // LIVE poll interval sec
 input bool   ScaleByStrength = true;            // LIVE scale lots by strength
-input string AudJpySymbol    = "AUDJPY";        // LIVE broker symbol for AUDJPY
+// ALPHA-ONLY basket: AUD/NZD risk-pairs + gold (the only legs with significant excess).
+input string AudJpySymbol    = "AUDJPY";        // LIVE broker symbol for AUDJPY (t=2.93)
 input string NzdJpySymbol    = "NZDJPY";        // LIVE broker symbol for NZDJPY (t=3.18)
 input string AudUsdSymbol    = "AUDUSD";        // LIVE broker symbol for AUDUSD (t=2.72)
-input string GoldSymbol      = "XAUUSD";        // LIVE broker symbol for Gold
-input string IndexSymbol     = "US500";         // LIVE broker symbol for SP500
-input string TechSymbol      = "USTEC";         // LIVE broker symbol for Nasdaq
-input string SilverSymbol    = "XAGUSD";        // LIVE broker symbol for Silver
+input string GoldSymbol      = "XAUUSD";        // LIVE broker symbol for Gold (t=2.03)
 
 CTrade        trade;
 CSignalClient client;
 bool   g_tester = false;
 // live: feed-symbol -> broker-symbol map
-string g_feed[7], g_broker[7];
+string g_feed[4], g_broker[4];
 int    g_n = 0;
 // tester: capitulation dates
 datetime g_sig[];
@@ -67,9 +65,6 @@ int OnInit()
    if(StringLen(NzdJpySymbol) > 0){ g_feed[g_n]="NZDJPY"; g_broker[g_n]=NzdJpySymbol; g_n++; }
    if(StringLen(AudUsdSymbol) > 0){ g_feed[g_n]="AUDUSD"; g_broker[g_n]=AudUsdSymbol; g_n++; }
    if(StringLen(GoldSymbol)   > 0){ g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;   g_n++; }
-   if(StringLen(IndexSymbol)  > 0){ g_feed[g_n]="US500";  g_broker[g_n]=IndexSymbol;  g_n++; }
-   if(StringLen(TechSymbol)   > 0){ g_feed[g_n]="USTEC";  g_broker[g_n]=TechSymbol;   g_n++; }
-   if(StringLen(SilverSymbol) > 0){ g_feed[g_n]="XAGUSD"; g_broker[g_n]=SilverSymbol; g_n++; }
    EventSetTimer(MathMax(10, PollSeconds));
    Print("RedditMacro_EA LIVE; strategy=", StrategyTag, " url=", SignalsUrl);
    OnTimer();

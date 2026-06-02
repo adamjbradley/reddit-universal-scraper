@@ -21,24 +21,22 @@ HORIZON_DAYS = 10        # holding period that maximised the bounce
 # the signal GENERALISES across risk assets - so we spread across the robust ones rather
 # than bet one. The EA maps these to its broker's symbol names.
 INSTRUMENTS = [
-    # AUD/NZD risk-pair complex: the 2016-26 cross-section showed the edge travels with the
-    # RISK-ON currency (AUD/NZD), not the JPY leg - all of these are significant (t 2.7-3.2),
-    # while havens/non-risk pairs (USDJPY/CHFJPY/EURUSD) are flat. So spread across the factor.
-    {"symbol": "AUDJPY", "asset": "fx",        "note": "win 66%, t=2.93 (2016-26)"},
+    # ALPHA-ONLY basket (2026-06-03). The cross-asset map (capitulation-long, VIX-gated, 10d
+    # excess) found statistically-tradable alpha ONLY in the risk-on FX complex (AUD/NZD) and
+    # gold. DROPPED for lack of significant excess: US500 (t=0.90), USTEC (t=1.13), and silver
+    # (XAGUSD t=1.72 - high excess but lumpy/one-rally). The edge is a risk-appetite/fear-reversal
+    # factor; these four are its clean expressions. (AUDCHF/NZDCHF/NZDUSD/EURJPY also validate, t>2.3
+    # - available to add, but they're the SAME factor so the marginal diversification is small.)
+    {"symbol": "AUDJPY", "asset": "fx",        "note": "t=2.93 (win 66%, 2016-26)"},
     {"symbol": "NZDJPY", "asset": "fx",        "note": "t=3.18 - strongest of the cross-section"},
     {"symbol": "AUDUSD", "asset": "fx",        "note": "t=2.72 - same factor, USD-funded"},
-    {"symbol": "XAUUSD", "asset": "commodity", "note": "gold - robust (+ve every regime)"},
-    {"symbol": "US500",  "asset": "index",     "note": "S&P 500"},
-    {"symbol": "USTEC",  "asset": "index",     "note": "Nasdaq 100"},
-    {"symbol": "XAGUSD", "asset": "commodity", "note": "silver - highest excess but lumpy; size SMALL"},
+    {"symbol": "XAUUSD", "asset": "commodity", "note": "gold t=2.03 - the fear-bid leg"},
 ]
 
-# Feed symbol -> price-table (Yahoo) symbol, for the trend filter.
-PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "NZDJPY": "NZDJPY=X", "AUDUSD": "AUDUSD=X",
-                "XAUUSD": "GC=F", "US500": "SPY", "USTEC": "QQQ", "XAGUSD": "SI=F"}
-# Equity index legs FAILED the 2022 bear -> only fire their capitulation-long in an uptrend.
-# AUDJPY + metals were all-weather in the multi-regime test, so they are NOT gated.
-GATE_TREND = {"US500", "USTEC"}
+# Feed symbol -> price-table (Yahoo) symbol.
+PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "NZDJPY": "NZDJPY=X", "AUDUSD": "AUDUSD=X", "XAUUSD": "GC=F"}
+# No equity legs in the alpha-only basket -> nothing to trend/fear-gate (kept for the API field).
+GATE_TREND = set()
 EUPH_THRESHOLD = 0.85   # rrai_pct >= this = retail euphoria (short only in a downtrend)
 FEAR_MIN = 0.5          # equity legs also need INDEPENDENT fear confirmation (Wikipedia z-score)
 
@@ -116,8 +114,10 @@ def capitulation_state():
 STRATEGIES = [
     {"name": "retail_fear", "status": "validated", "enabled": True,
      "desc": "long risk when retail capitulates (RRAI<=0.15)+VIX>=18; equity legs gated to fear_z confirmation"},
-    {"name": "euphoria_short", "status": "regime-gated", "enabled": True,
-     "desc": "short index ONLY when retail euphoria (RRAI>=0.85) coincides with a downtrend"},
+    {"name": "euphoria_short", "status": "PARKED (no tradable alpha)", "enabled": False,
+     "desc": "short index in euphoria+downtrend - PARKED 2026-06-03: it traded the dropped equity "
+             "indices, all-period excess was -1.84 (only conditionally +ve in a confirmed bear). "
+             "Re-enable with a dedicated index list if running a bear-regime short."},
 ]
 
 
