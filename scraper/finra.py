@@ -73,10 +73,13 @@ def squeeze_screen(min_days=15, z_min=1.5, mention_days=21, min_mentions=3, min_
     c = get_connection()
     max_date = c.execute("SELECT MAX(date) d FROM short_volume").fetchone()["d"]
     fresh_cut = (datetime.date.fromisoformat(max_date) - datetime.timedelta(days=5)).isoformat()
-    ment_ts = time.time() - mention_days * 86400
+    # created_utc is an ISO text column ('YYYY-MM-DDTHH:MM:SS'); compare to an ISO cutoff,
+    # NOT an epoch float (SQLite type affinity makes text >= float always true -> all-time).
+    ment_cut = (datetime.date.today() - datetime.timedelta(days=mention_days)).isoformat()
     ment = {r["ticker"]: (r["m"], r["s"]) for r in c.execute(
         """SELECT ticker, COUNT(*) m, AVG(sentiment_score) s FROM ticker_mentions
-           WHERE created_utc >= ? GROUP BY ticker HAVING m >= ?""", (ment_ts, min_mentions)).fetchall()}
+           WHERE substr(created_utc,1,10) >= ? GROUP BY ticker HAVING m >= ?""",
+        (ment_cut, min_mentions)).fetchall()}
     out = []
     for t in ment:
         rows = c.execute("SELECT date, short_ratio, total_volume FROM short_volume "

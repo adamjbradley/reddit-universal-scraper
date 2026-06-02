@@ -28,6 +28,7 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ✅ Thesis validated (forensic) / ⚠️ not yet PIT-tradeable | **gone≥0.20 → +14.3%/10d short, 83% win, t=2.57, +ve in all 3 regimes**; control proves the gate flips the trade (un-gated pump short *loses* −10.8%, t=−2.22) | make tradeable: finish author sweep to power the PIT `young_frac` gate (now n=3–7, inconclusive); express via puts |
+| `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | 🟡 Promising — **PIT-tradeable** | concentrated pump (per_author≥2, m≥10) + sentiment≥0.4 + 5d price already rolling over → **+7.2%/10d net short, t=2.70**; **date-clustered t=2.52 (47 indep. dates), dose-response in sentiment, +ve all 3 sub-periods, survives 2× costs**; control (same pumps, no divergence) *loses* −4.1% | OOS-collect forward; tighten `per_author` (some ETF/large-cap leak in); express via puts; promote on more episodes |
 | `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
 | `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
 | `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
@@ -117,6 +118,22 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
   - The gate **flips the sign of the trade** (~+25pp spread). Un-gated concentrated pumps are *un-shortable* (they continue / squeeze); only the ones whose promoters vanish collapse. The deletion is doing the work, not pump-selection. Positive across all 3 regimes at gone≥0.20.
 - **⚠️ Not yet point-in-time tradeable.** `gone_frac` uses *hindsight*: Reddit exposes no deletion timestamp, so "gone" means "gone as of our latest sweep" — unknowable at the pump date. The PIT-available leading proxy is `young_frac` (account age at post time), but it's currently too sparse to conclude (n=3–7, and the few events lean the wrong way).
 - **Path to tradeable:** (1) **finish the author sweep** (20%→40%+) to power the `young_frac` PIT test; (2) failing that, a **live deletion-monitor** rule — `author_status_revalidate` already detects deletions forward; short on deletion-*confirmation* within K days of a fresh pump, capturing the back half of the collapse. Express via **puts** (defined risk vs squeeze tails; many are HTB/no-borrow).
+
+### 🟡 `distribution_short` — concentrated pump + sentiment-price divergence *(NEW, point-in-time tradeable)*
+- **Thesis:** the "bagholder distribution" moment — a *manufactured* pump (concentrated chatter) where **price has started rolling over but the crowd is still euphoric**. Insiders distribute into the retail bid; sentiment lags price. Every input (`per_author`, `mentions`, `sentiment`, trailing price return) is known at signal time → **unlike the deletion gate, this is actually tradeable live.** (`backtest/microstructure.py`)
+- **Rule:** `per_author≥2 AND mentions≥10 AND sentiment≥0.4 AND 5d-trailing-return<0` → SHORT. h=10, market-neutral, 75bps + 8bps/day borrow.
+- **Result (2026-06-02):** **+7.2%/10d net, t=2.70, win 52%, n=60** across **39 distinct tickers**.
+  - **Date-clustered test** (1 obs/date, kills intra-day correlation): **+7.6%, t=2.52, 47 independent dates** — *not* a risk-off-day artifact (max 3 events on any date, spread over 12 months).
+  - **Dose-response** in sentiment (s≥0.3/0.4/0.5 → +3.9/+7.2/+11.1%) and **monotone in horizon** (h=5/10/20 → +5.6/+7.2/+9.5%, t rising to 2.92) — the hallmarks of a real effect, not a fit.
+  - **Survives 2× costs** (150bps spread + 16bps/day borrow → still +4.9%/10d).
+  - **Control:** same concentrated pumps *without* the divergence (price up) → **−4.1%** — the divergence is doing the work. Positive in all 3 sub-periods.
+- **Why it works where the others don't:** the gate is *precise* — it only fires inside the manufactured subset. The broad high-attention universe **drifts flat-to-up** (gross ≈ +0.04%), so generic pump-shorting just pays costs (see negatives below); the edge requires isolating the distributing pumps, which both this and the deletion gate do.
+- **Caveats / next:** n still modest (47 indep. dates); single ~12-mo window (sub-periods, not true bull/bear regimes); small-cap-heavy so no multi-regime price history; loose `per_author≥2` lets some ETFs/large-caps (QQQ/IWM) leak in — tighten to ≥3 and/or split small-cap vs index. **Collect forward OOS** (the clock starts now); express via **puts**. Not yet promoted to the live `/signals` feed.
+
+### ❌ Negatives from the same study (recorded so we don't re-run them)
+- **Broad-universe microstructure timing does NOT survive costs.** Recruitment-exhaustion, mention-deceleration, and sentiment-price divergence applied to the *whole* high-attention set (mentions_z≥1) are all **net-negative** — the universe drifts flat-to-up, so shorting it generically just bleeds the ~2.3% friction. Precision (concentration filter) is mandatory.
+- **Recruitment-exhaustion alone = null.** New-author inflow rolling over is directionally supportive *within* concentrated pumps (+1.8% net, but t=0.33) and adds to the stack, but is not a standalone edge at current coverage. The new-author feature is built and kept.
+- **Up-leg continuation long = lottery.** "Ride while recruiting + accelerating" netted +1.6% but win 27% with regimes [+21/−7/−9] — one big winner, otherwise negative. Not stable; dropped.
 
 ---
 
@@ -213,6 +230,14 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **New PIT-tradeable short found: `distribution_short`** (`backtest/microstructure.py`).
+  Built the missing **new-author recruitment** feature and tested demand-quality timing signals. The
+  decisive lesson: microstructure timing (recruitment-exhaustion / deceleration / divergence) is **worthless
+  on the broad attention universe** (it drifts flat-to-up, costs dominate) but **powerful inside the
+  concentrated/manufactured subset** — exactly where the deletion edge lives. Winner = concentrated pump +
+  euphoric sentiment + price already rolling over → **+7.2%/10d net, t=2.70 (date-clustered t=2.52, 47 indep.
+  dates), dose-response, survives 2× costs**; control loses −4.1%. Unlike the deletion gate it uses **no
+  hindsight** → tradeable. Recorded negatives (broad timing, recruitment-alone, up-leg ride) to avoid re-runs.
 - **2026-06-02** — **Deletion-gated short forensically validated.** Author coverage 8%→20% (2,973 gone).
   Re-backtest: `gone_frac≥0.20` → +14.3%/10d short (83% win, t=2.57, +ve all regimes); the *control*
   (un-gated concentrated pumps) *loses* −10.8% — so the deletion gate flips the trade, confirming the
