@@ -19,7 +19,7 @@ changelog at the bottom on every material change.
 | 🔄 **In progress** | Data/build task underway |
 
 ## Progress at a glance
-_Last updated: 2026-06-01. Update this section whenever a status, metric, or next-step changes._
+_Last updated: 2026-06-02. Update this section whenever a status, metric, or next-step changes._
 
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
@@ -45,6 +45,8 @@ _Last updated: 2026-06-01. Update this section whenever a status, metric, or nex
 | Author profiling coverage | 🔄 20% | 30,015 / 152,040; 2,973 gone (2,087 del / 886 susp); target ~40% |
 | Deletion-gated short testability | ✅ Forensically validated | gone≥0.20 short +14.3%/10d, t=2.57 (n=30); PIT `young_frac` proxy still sparse (n=3–7) |
 | Short-interest / squeeze data (FINRA Reg SHO) | ✅ Done | `scraper/finra.py`: 475k rows / 5,693 tickers; **z-score** screen (abs level is MM noise, median 0.49) |
+| Independent fear-confirmation gate (Wikipedia) | ✅ Live / ⚠️ not committed-backtested | `fear_z≥0.5` gates the equity legs of `retail_fear`; +0.36pp rescue (ad-hoc); 1.32× fear-attention on cap days. **TODO: commit a reproducible fear-gated study** |
+| Live screens in `/signals` (`tradeable:false`) | ✅ Done | `smallcap_pump_fade` · `fresh_pump_alert` · `coordination_flag` · `biotech_catalyst` · `attention_fade` · `calendar_overlay` |
 | Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
 | Equity/options paper client (Alpaca) | 💡 Planned | not started |
 
@@ -79,7 +81,8 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
 - **Spec (shipped):** long when `rrai_pct ≤ 0.15` **AND** `VIX ≥ 18`; hold ~10d; size by extremity; **fear-side only**.
 - **Evidence (12mo, net, 10d):** **excess over buy-&-hold** SPY +0.17pp / QQQ +0.23pp / **AUDJPY +0.47pp** (win 88%); `bear_extreme` +0.24/+0.32/+0.36pp corroborates. **VIX gate ~4×'d it** (SPY +1.56%/10d in fear vs +0.42% calm). Modest **timing tilt**, not standalone alpha (buy-&-hold already won 66–75%).
 - **Instrument scan (17 MT5 instruments, 10d excess vs buy-&-hold):** the signal **generalises across the risk-on basket** — Silver +2.22pp (lumpy, one big rally → size small), Gold +0.59pp (robust, +ve every regime), AUDJPY +0.47pp (steadiest, win 88%), SP500 +0.17pp. Oil (+1.82pp but one-episode) and crypto (BTC net-negative) **dropped**. Generalisation across assets is itself evidence it's a real risk-appetite signal.
-- **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo).
+- **🟢 Independent fear-confirmation gate (Wikipedia, LIVE):** the **equity** legs (US500/USTEC) additionally require an *independent* fear spike — `fear_z ≥ 0.5`, the z-score of Wikipedia fear-page attention (Stock_market_crash / Recession / Bear_market views) vs the trailing ~30d — **AND** a 200-DMA uptrend. Rationale: SPY capitulation *alone* doesn't beat buy-and-hold (master backtest excess −0.05) and turns into a falling-knife in bears; an independent fear-spike rescues it. **Earlier ad-hoc backtest: SPY capitulation +0.36pp/10d when `fear_z` confirms vs ~−0.01 ungated**, and cross-validation shows fear-attention is **1.32× higher on capitulation days** (independent of Reddit + price → 3rd corroborating read; see `DATA_PLAN.md`). Wired live in `analytics/signals.py` (`_fear_z`, `FEAR_MIN`, gates the equity legs; `fear_z` shipped in `/signals`). **⚠️ Caveat:** this +0.36pp figure is from an *ad-hoc* run — **not yet a committed/re-runnable backtest** (the master `run_all.py` doesn't yet split capitulation by `fear_z`). TODO: add a committed fear-gated capitulation study so the claim is reproducible.
+- **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). Equity legs gated by trend + `fear_z`.
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
 
@@ -133,7 +136,7 @@ sentiment trajectory, author young/gone/suspended mix, novelty).
 ### ❌ Negatives from the same study (recorded so we don't re-run them)
 - **Broad-universe microstructure timing does NOT survive costs.** Recruitment-exhaustion, mention-deceleration, and sentiment-price divergence applied to the *whole* high-attention set (mentions_z≥1) are all **net-negative** — the universe drifts flat-to-up, so shorting it generically just bleeds the ~2.3% friction. Precision (concentration filter) is mandatory.
 - **Recruitment-exhaustion alone = null.** New-author inflow rolling over is directionally supportive *within* concentrated pumps (+1.8% net, but t=0.33) and adds to the stack, but is not a standalone edge at current coverage. The new-author feature is built and kept.
-- **Up-leg continuation long = lottery.** "Ride while recruiting + accelerating" netted +1.6% but win 27% with regimes [+21/−7/−9] — one big winner, otherwise negative. Not stable; dropped.
+- **Up-leg longs both fail.** (a) "Ride while recruiting + accelerating" (concentrated) netted +1.6% but win 27%, regimes [+21/−7/−9] — one big winner, otherwise negative. (b) "Attention-leads-price coil" (broad: recruitment surging while price still flat) was **net −1.4 to −1.9%** across horizons, sign-stable loser. Neither is a tradeable long; dropped.
 
 ---
 
@@ -230,6 +233,11 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **Doc-completeness pass.** Audited the doc against the live registry + all backtest
+  modules. Found one missing edge — the **Wikipedia fear-confirmation gate** (live: gates the equity legs
+  of `retail_fear`, `fear_z≥0.5`, +0.36pp rescue) — now documented, *honestly flagged as not yet
+  committed-backtested*. Also added the full live-screen list (`fresh_pump_alert`, `coordination_flag`, …)
+  to the scoreboard and recorded the broad "attention-leads-price" long as a failed up-leg test.
 - **2026-06-02** — **New PIT-tradeable short found: `distribution_short`** (`backtest/microstructure.py`).
   Built the missing **new-author recruitment** feature and tested demand-quality timing signals. The
   decisive lesson: microstructure timing (recruitment-exhaustion / deceleration / divergence) is **worthless
