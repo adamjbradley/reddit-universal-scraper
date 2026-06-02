@@ -45,7 +45,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 | Author profiling coverage | 🔄 20% | 30,015 / 152,040; 2,973 gone (2,087 del / 886 susp); target ~40% |
 | Deletion-gated short testability | ✅ Forensically validated | gone≥0.20 short +14.3%/10d, t=2.57 (n=30); PIT `young_frac` proxy still sparse (n=3–7) |
 | Short-interest / squeeze data (FINRA Reg SHO) | ✅ Done | `scraper/finra.py`: 475k rows / 5,693 tickers; **z-score** screen (abs level is MM noise, median 0.49) |
-| Independent fear-confirmation gate (Wikipedia) | 🟡 Live but DOUBTFUL | MT5 A/B (US500, 2020-26): `fear_z` gate **hurts** absolute returns (fires long into tops, e.g. Feb-2020); only the **trend filter** helps (DD 13.6→7.1%). +0.36pp was *excess* (diff metric) & never committed. **TODO: committed excess-based study; maybe drop `fear_z`** |
+| Independent fear-confirmation gate (Wikipedia) | 🟡 Plausible but UNPROVEN | **Committed excess study (`backtest/fear_gate.py`) settles it:** fear-only *reproduces* the +0.36pp point estimate (SPY +0.32 / QQQ +0.41 excess) — so not fabricated — but it's **not significant** (excess t≈0.6, n≈94). The LIVE **trend+fear** combo is *worse* (dilutes SPY→+0.09, flips QQQ→**−0.20**). MT5 absolute showed losses (COVID-cluster). Net: **fear-only > trend+fear for excess**; gate stays thin/unproven; AUDJPY rightly ungated |
 | Live screens in `/signals` (`tradeable:false`) | ✅ Done | `smallcap_pump_fade` · `fresh_pump_alert` · `coordination_flag` · `biotech_catalyst` · `attention_fade` · `calendar_overlay` |
 | Idea backlog | 💡 7 ideas | squeeze · options-flow · hype-cycle · sentiment-extremes · rotation · novelty · coordination |
 | Equity/options paper client (Alpaca) | 💡 Planned | not started |
@@ -92,7 +92,23 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
     | trend **AND** fear (the live gate) | 54 | 27 | 55.6 | **−372** | 0.73 | 7.1 |
 
     **Result: the `fear_z` gate does NOT help — it hurts.** Adding fear makes US500 *worse* both alone (−$1045) and with trend (−$372 vs trend-only +$21). Fear spikes cluster *at/just before tops* where the 200-DMA still reads up (e.g. Feb-2020) → `trend AND fear` fires **long into the COVID falling knife**. The **trend filter** is the only component that helps, and mostly by cutting drawdown (13.6→7.1%), not return. Baseline ≈ breakeven re-confirms equity capitulation has no absolute edge.
-  - **⚠️ Interpretation:** MT5 measures *absolute* long-only profit; the +0.36pp claim was *excess vs buy-&-hold* (different metric) → this doesn't *directly* refute it, but it removes any real-money support for the gate on the index it gates, and the +0.36pp was never committed-backtested either. **Net: downgrade the fear-gate to 🟡 doubtful** — at best it's a drawdown/risk control, not a return edge. **TODO: settle it with a committed *excess-based* Python study** (the only frame that can validate the +0.36pp); consider dropping `fear_z` from the live equity gate and keeping only the trend filter pending that.
+  - **✅ Committed EXCESS study (`backtest/fear_gate.py`, `python -m backtest.fear_gate`) — this settles it.** The frame MT5 can't measure: mean EXCESS over buy-&-hold (the +0.36pp's own metric). Same point-in-time date-sets as the MT5 run (shared `capitulation_sets()`). 10d, net of costs:
+
+    | leg | variant | n | excess% | win% | t(exc) |
+    |---|---|---|---|---|---|
+    | **SPY** | baseline | 332 | −0.05 | 61 | −0.21 |
+    | SPY | **fear** | 94 | **+0.32** | 68 | +0.64 |
+    | SPY | trend | 220 | −0.03 | 60 | −0.16 |
+    | SPY | trend+fear *(live)* | 53 | +0.09 | 64 | +0.19 |
+    | **QQQ** | baseline | 332 | +0.06 | 62 | +0.20 |
+    | QQQ | **fear** | 94 | **+0.41** | 65 | +0.71 |
+    | QQQ | trend+fear *(live)* | 53 | **−0.20** | 60 | −0.33 |
+    | AUDJPY *(ungated)* | baseline | 333 | **+0.26** | 68 | **+2.04** |
+
+    **Verdict (three honest parts):** (1) **The +0.36pp REPRODUCES as a point estimate** — fear-only SPY +0.32 / QQQ +0.41 excess — so it was *not* fabricated; the fear gate does lift equity-capitulation excess. (2) **But it is NOT statistically significant** (excess t≈0.6, n≈94) — a thin, unproven edge. (3) **The LIVE `trend+fear` combo is the wrong way to apply it**: the trend filter *removes the buy-fear-in-a-downtrend bounces that carry the excess*, diluting SPY (+0.32→+0.09) and flipping QQQ negative (+0.41→**−0.20**).
+  - **Reconciliation (why MT5 said "loss" and this says "small win"):** MT5 sums *absolute* P&L and holds one position at a time, so a few COVID-cluster trades dominate the dollar total (−$1045); the excess frame means-averages independent trades, where fear is mildly +ve. Both are correct for their question — for *signal research* the excess frame is the right one, so the earlier "fear-gate is a drag" was a frame artifact.
+  - **The genuine tension:** fear → better *timing/excess* but worse *drawdown* (COVID knives); trend → better *drawdown* but worse *excess*. The live `trend AND fear` gets the worst of both for excess.
+  - **Recommendation:** keep the gate 🟡 (positive but insignificant). If we ever optimise the equity legs for excess, use **fear-only, not trend+fear**; AUDJPY (the one significant edge, +0.26 t=2.04) stays **ungated** — confirmed correct. (User chose to leave the live gate unchanged for now; this is logged for when we revisit.)
 - **Expression:** a **diversified risk-on basket** — AUDJPY + Gold (XAUUSD) + US500/USTEC + small Silver (XAGUSD). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). Equity legs gated by trend + `fear_z`.
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
@@ -244,6 +260,15 @@ but-unvalidated screens. Do NOT size up on these as-is.
   NOT promoted to tradeable. (Single-regime; can't be fixed by backfill — penny price history doesn't exist.)
 
 ## Changelog
+- **2026-06-02** — **Committed EXCESS study settles the fear-gate (`backtest/fear_gate.py`).** The proper
+  frame (mean excess vs buy-&-hold, the +0.36pp's own metric). Three findings: (1) the +0.36pp
+  **reproduces** as a point estimate (SPY +0.32 / QQQ +0.41 fear-only excess) — not fabricated; (2) it's
+  **not significant** (excess t≈0.6, n≈94); (3) the LIVE **trend+fear** combo is *worse* — dilutes SPY
+  (→+0.09), flips QQQ negative (→−0.20) — because the trend filter strips the downtrend bounces that carry
+  the excess. Reconciles the MT5 "loss": MT5 sums absolute P&L (COVID-cluster dominates), excess
+  means-averages — so the earlier "drag" was a frame artifact. Gate stays 🟡; fear-only > trend+fear for
+  excess; AUDJPY stays ungated (the only significant edge). Exporter refactored to share the study's
+  `capitulation_sets()` (MT5 + Python test identical dates).
 - **2026-06-02** — **MT5 backtest of the fear-gate → it's a DRAG, not a rescue.** Extended `--export-signals`
   to emit 4 point-in-time capitulation date-sets (baseline / `fear_z≥0.5` / 200-DMA-trend / trend+fear)
   and ran each through the MT5 Strategy Tester on US500 (2020-26) via `RedditMacro_US500_*.ini`. Adding
