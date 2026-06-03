@@ -464,6 +464,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Pulled MT5 broker OHLC into Python → the replica now MATCHES the MT5 tester.** Used the
+  `MetaTrader5` Python package (`scripts/export_mt5_ohlc.py`) to export D1 OHLC straight from the terminal
+  (the exact tester data) for all 6 instruments → `mt5_ohlc` table. `mt5_sim.py` now uses true-range ATR +
+  intraday stops and **reproduces MT5** (gold OOS PF **1.27 == 1.27**; AUDUSD/silver fail OOS in both). The
+  strategy now runs fully in Python on the real broker data, MT5-free. Residual gaps: closed-trade vs
+  floating-equity DD, and no spread/swap (FX) — both addressable.
 - **2026-06-03** — **Python replica of the MT5 EA (`backtest/mt5_sim.py`) — cross-check.** Re-ran the
   capitulation legs in Python (turn entry / ATR stop / risk sizing). Qualitative verdicts reproduce (gold
   +ve, **silver overfits 2.02→0.76 OOS**, all legs thin PF ~1.0-1.5) — BUT the prices table is **close-only**,
