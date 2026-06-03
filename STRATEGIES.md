@@ -464,6 +464,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Full backtest suite + optimization now runs LOCALLY in Python.** Added a local full-grid
+  optimizer to `mt5_sim` (IS→OOS, on the MT5 broker OHLC, ~7k sims in seconds) + series caching. Re-ran
+  everything locally: the MT5-replica reproduces the reckoning (only GOLD holds OOS, max-IS PF 2.19;
+  AUDJPY/Silver/US500 overfit→fail), and the Python suite is unchanged (capitulation_long SURVIVOR
+  SPY/QQQ/AUDJPY, distribution_short +7.4% t=2.83, smallcap/biotech single-regime, turn-of-month overlay).
+  No MT5 dependency for backtesting any more — MT5 is just the live execution shell.
 - **2026-06-03** — **Pulled MT5 broker OHLC into Python → the replica now MATCHES the MT5 tester.** Used the
   `MetaTrader5` Python package (`scripts/export_mt5_ohlc.py`) to export D1 OHLC straight from the terminal
   (the exact tester data) for all 6 instruments → `mt5_ohlc` table. `mt5_sim.py` now uses true-range ATR +
