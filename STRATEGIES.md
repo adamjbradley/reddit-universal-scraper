@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation) — **gold-led** | Macro overlay | ✅ Excess-validated; **MT5+OOS tradeable on GOLD** | EXCESS robust across AUD/NZD FX + gold, but **OOS realistic-execution separates them**: **Gold robust (OOS PF 1.96, DD 18%)**; AUDJPY marginal (OOS PF 1.31, needs long hold); **AUDUSD fails OOS (PF 0.47)**. Turn-entry + ATR stop + gold-robust params (StopATR 3/hold 11). | **forward demo (gold-led)**; per-instrument params; consider dropping AUDUSD/NZDJPY from live |
+| `retail_fear` (capitulation) — **gold-led** | Macro overlay | ✅ Excess-validated; **MT5+OOS tradeable on GOLD** | EXCESS robust across AUD/NZD FX + gold, but **OOS realistic-execution separates them**: **Gold OOS-profitable (PF ≈1.3-2.0, arm-sensitive on n=16; DD 18-33%)**; AUDJPY marginal-but-+ve OOS (PF 1.25, low DD); **AUDUSD fails OOS (PF 0.47)**. Turn-entry + ATR stop + per-instrument params. | **forward demo (gold-led)**; per-instrument params; consider dropping AUDUSD/NZDJPY from live |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -369,7 +369,7 @@ maximising net profit — then **validated the winners out-of-sample (2023-2026)
 | default (stop 2.0, hold 10) | — | 1.75 / 26% / 56% |
 
 - **Encouraging:** the signal **didn't badly overfit** — *every* parameter set stayed profitable OOS (PF 1.5-2.0). The gold leg is robust to parameter choice.
-- **But "max profit" is the wrong objective:** it picked a tight-stop / quick-exit corner with **2-3× the drawdown** (42-55%) for the *same* PF. **The robust set (wide stop 3×ATR, hold ~11d) wins OOS: PF 1.96, DD 18%, win 62%** — optimise for *risk-adjusted* return (Sharpe/PF-with-DD), not raw profit.
+- **But "max profit" is the wrong objective:** it picked a tight-stop / quick-exit corner with **2-3× the drawdown** (42-55%) for the *same* PF. **The robust set (wide stop 3×ATR, hold ~11d) wins OOS: PF 1.96, DD 18%, win 62%** — optimise for *risk-adjusted* return (Sharpe/PF-with-DD), not raw profit. _(NB: this 1.96 used ArmWindow=7; the shipped default arm=5 gives ≈1.27 on the same 16 OOS trades — the figure is arm-sensitive on a tiny sample, see the "MT5 deployable-config report" correction.)_
 - **ArmWindow ≥3 is irrelevant** (the turn arrives within ~3 bars). The live params worth using on gold: **StopATR≈3, MaxHoldDays≈11**.
 ### Per-instrument optimization (AUDJPY + AUDUSD, same IS→OOS protocol) — the deployable reality
 Optimised AUDJPY and AUDUSD the same way (genetic IS 2018-22 → OOS validate 2023-26):
@@ -390,6 +390,23 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 2. **The `/signals` feed already serves the live trigger** (capitulation + VIX + fear_z); the EA mirrors it. From today, every fill is genuine OOS.
 3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
+
+## ⚠️ MT5 deployable-config report + honesty correction (2026-06-03)
+Ran the current per-instrument config in the MT5 tester:
+
+| config | trades | win% | PF | DD% |
+|---|---|---|---|---|
+| Gold full 2018-26 (stop3/hold11/1.0%) | 63 | 63.5 | 1.46 | 33 |
+| Gold OOS 2023-26 | 16 | 56.3 | **1.27** | 22 |
+| AUDJPY full 2018-26 (stop2/hold24/0.5%) | 54 | 46.3 | 1.63 | 3.1 |
+| AUDJPY OOS 2023-26 | 14 | 50.0 | 1.25 | 2.3 |
+
+**Correction:** earlier I quoted **gold OOS PF 1.96**; that used **ArmWindow=7**, whereas the shipped default is
+**ArmWindow=5**, which gives **PF 1.27** on the same OOS. My "ArmWindow ≥3 is irrelevant" claim held *in-sample*
+(turns land within ~3 bars in 2018-22) but **NOT out-of-sample** (2023-26 turns sometimes take 4-7 bars). On
+just **16 OOS trades** this swings PF 1.27↔1.96 — so the honest statement is **gold is OOS-profitable, PF ≈1.3-2.0,
+arm-sensitive on a tiny sample** (not a hard 1.96). Both legs are +ve IS *and* OOS; AUDJPY adds steady low-DD
+(2-3%) return as a half-size satellite. Forward demo remains the real test.
 
 ## ✅ Full backtest-suite refresh (2026-06-03, on the extended 2016-26 data, 100% pump-author coverage)
 Re-ran every Python backtest module. **Conclusions held — the system is stable.**
@@ -413,6 +430,11 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **MT5 deployable-config report + honesty correction.** Ran the current per-instrument config:
+  Gold full PF 1.46 / OOS 1.27 (DD 22-33%); AUDJPY full PF 1.63 / OOS 1.25 (DD 2-3%). Both legs +ve IS *and*
+  OOS. **Corrected an overstatement:** the earlier "gold OOS PF 1.96" used ArmWindow=7; the shipped default
+  arm=5 gives PF 1.27 on the same 16 OOS trades. "ArmWindow≥3 irrelevant" held IS but NOT OOS — so gold OOS is
+  PF ≈1.3-2.0, arm-sensitive on a tiny sample (not a hard 1.96).
 - **2026-06-03** — **Full backtest-suite refresh.** Re-ran run_all / fear_gate / microstructure / sectors /
   calendar_events / trend / macro_research on the extended 2016-26 data. All conclusions held: capitulation-long
   a consistent SURVIVOR (AUDJPY +0.21 / SPY +0.12 / QQQ +0.24 excess), distribution_short +7.38% t=2.83,
