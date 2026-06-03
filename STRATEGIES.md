@@ -428,6 +428,18 @@ Ran the identical random-entry null on `distribution_short` (`backtest/microstru
   multi-regime validate); it **fades in its 2nd half** (date-split t=3.16→0.71); small-cap shorts have squeeze/
   borrow/HTB tails → **express via puts**. So: *real, but not yet deployable-with-confidence* — needs forward OOS.
 
+### Exhaustive null across EVERY strategy (`backtest/null_all.py`) — and the null's own limitation
+Ran the random-entry null on all strategies. **Definitive KILLS (worse than random — the null is decisive here):**
+`organic_long` (1st pct), `dump_fade_short` (2nd), `deletion_short` (0th), and **every macro capitulation leg**
+(gold 4th, US500/USTEC 0th, silver 29th, AUDJPY 38th). **Methodological catch:** a naive broad/timing null
+**over-credits any strategy that enters near a big move** — `pump_long` (100th) "passes" only because it *longs
+the pump*, yet it regime-flips (t=0.75); `attention_fade`/`fade_organic_short` likewise (tiny +0.3% beat-random-
+by-selection edges that flip across regimes). So **the null is necessary, not sufficient** — pair it with
+regime-stability + an *own-universe* control. Only **`distribution_short` passes all of it** (timing null 100th,
+own-universe null 98th, AND it predicts a *reversal* rather than riding a contemporaneous spike). `smallcap`/
+`biotech` pass but are single-regime; `AUDUSD` is 96th full-period yet fails OOS. **Bottom line unchanged: one
+robust edge (`distribution_short`); the macro capitulation complex is confirmed worse-than-random.**
+
 ## ★★ Comprehensive optimization across ALL strategies — the overfitting reckoning (2026-06-03)
 Applied the same protocol (comprehensive genetic IS-optimize 2018-22 → OOS-validate 2023-26, edge params swept,
 RiskPct fixed at 1%) to **every MT5-tradeable instrument**, and a date-split pseudo-OOS to the Python equity legs.
@@ -501,6 +513,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Exhaustive random-entry null on ALL strategies (`backtest/null_all.py`).** Definitive
+  kills (worse than random): organic_long, dump_fade_short, deletion_short, and every macro capitulation leg
+  (gold 4th, US500/USTEC 0th). Key methodological finding: the naive null **over-credits momentum/selection
+  strategies** (pump_long 100th but regime-flips; attention_fade/fade_organic 99th but flip) — it's necessary,
+  not sufficient; must pair with regime-stability + own-universe control. Only **distribution_short passes
+  everything**. Bottom line unchanged: one robust edge, macro capitulation confirmed worse-than-random.
 - **2026-06-03** — **distribution_short PASSES the random-entry null — the one real edge.** Same null applied
   (`microstructure.random_null`): vs random dates on the same tickers → **100th percentile**; vs random
   concentrated pumps → **98th**. So its timing (divergence) AND selection (gate) add real, non-drift value —
