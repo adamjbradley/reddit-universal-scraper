@@ -440,6 +440,33 @@ own-universe null 98th, AND it predicts a *reversal* rather than riding a contem
 `biotech` pass but are single-regime; `AUDUSD` is 96th full-period yet fails OOS. **Bottom line unchanged: one
 robust edge (`distribution_short`); the macro capitulation complex is confirmed worse-than-random.**
 
+### distribution_short — clean-universe validation + forward-OOS log (`backtest/dist_short_oos.py`)
+Focusing on the one survivor surfaced a **universe-pollution bug that was halving the edge**. The raw signal
+set leaked four off-thesis categories — mega-caps (AAPL/NVDA/META/PLTR…), common-word false positives
+(LIVE/GOOD/TIME/SOAR/BOOM/PR/SI — the *word*, validated as a symbol), ETFs (IAU/IWM/QQQ), and crypto (ETH).
+Excluding them **a priori, by what the names are (not their returns)**:
+
+| universe | n | net | win | t |
+|---|---|---|---|---|
+| ALL (polluted) | 52 | +9.46% | 62% | 3.13 |
+| **CLEAN micro-cap only** | **25** | **+21.46%** | **84%** | **4.10** |
+| excluded (mega/word/ETF/crypto) | 27 | −1.65% | 41% | −1.72 |
+
+The thesis predicts exactly this: **manufactured-pump distribution is a micro-cap phenomenon** — Reddit moves
+price only where liquidity is thin; on mega-caps/ETFs/crypto the same short *loses* (they mean-revert up). The
+excluded set is a genuine mix (PLTR +6%, INTC −8%, NVDA +2%) netting ~zero, so this is universe-definition, not
+cherry-picking. **The "recent decay" earlier flagged was a pollution artifact** — on the clean universe the late
+half is +18.99% (win 85%, t=2.77) vs early +24.13% (t=3.06), i.e. *stable*, not fading. This **supersedes** the
+date-split "fades to +2.5%, t=0.71" line in the optimization table below — that split was run on the polluted set.
+
+**Forward-OOS log is now live (spec frozen 2026-06-03).** `dist_short_oos.py` records every fresh clean-universe
+signal and its realized 10d outcome as the scheduler scrapes; signals dated ≥ freeze are genuine OOS (the spec
+couldn't be fit to them). 25 in-sample signals seeded (+21.46%, t=4.10); the OOS record starts at zero and builds
+forward. **This is the one gate distribution_short hasn't faced** — the whole sample still lives in a single
+~12-month scraped window, so only forward accumulation can confirm it. Remaining caveats: fat left tail (worst
+trade JAGU −42% short squeeze → **express via puts**, not naked short); blocklist needs maintenance as new
+mega-caps / common-word tickers appear.
+
 ## ★★ Comprehensive optimization across ALL strategies — the overfitting reckoning (2026-06-03)
 Applied the same protocol (comprehensive genetic IS-optimize 2018-22 → OOS-validate 2023-26, edge params swept,
 RiskPct fixed at 1%) to **every MT5-tradeable instrument**, and a date-split pseudo-OOS to the Python equity legs.
@@ -453,7 +480,7 @@ RiskPct fixed at 1%) to **every MT5-tradeable instrument**, and a date-split pse
 | capitulation Silver (optimised) | PF 2.85 | **PF 0.26 (DD 115%)** | ✗ overfit — blew up |
 | capitulation US500 (optimised) | PF 1.91 | PF 1.37 | ~ held but weak signal (excess t≈0.9) |
 | capitulation USTEC | — | — | no usable result |
-| `distribution_short` (equity, date-split) | +11.4% (t=3.16, 1st half) | **+2.5% (t=0.71, 2nd half)** | 🟡 real but **fades**; single-regime, not OOS-clean |
+| `distribution_short` (equity, date-split) | +11.4% (t=3.16, 1st half) | ~~+2.5% (t=0.71, 2nd half)~~ | ⬆ **SUPERSEDED** — fade was pollution; clean universe late-half +19.0% (t=2.77), see above |
 | `smallcap_pump_fade`, `biotech` | strong | **untestable** | single-regime (no penny price history) |
 
 - **The tell was visible before OOS:** each instrument's in-sample "optimum" was a *different random-looking corner* (turn 0/1, stop 1-4, hold 7-17, Fixed/Kelly) — no consistent pattern = curve-fit. OOS confirmed it: IS PF 2-2.85 → **OOS PF 0.26-1.37**.
@@ -513,6 +540,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **★ distribution_short clean-universe + forward-OOS log (`backtest/dist_short_oos.py`).**
+  Found the signal universe was polluted with mega-caps / common-word false-positive tickers / ETFs / crypto —
+  excluding them a priori **doubled the edge to +21.46% (win 84%, t=4.10)** and revealed the earlier "recent
+  decay" was a pollution artifact (clean late-half +19.0%, t=2.77 — stable). Froze the clean spec and started
+  the forward-OOS log: every fresh signal ≥ 2026-06-03 is genuine out-of-sample, accumulating as the scheduler
+  scrapes. The last untested gate is now ticking.
 - **2026-06-03** — **Exhaustive random-entry null on ALL strategies (`backtest/null_all.py`).** Definitive
   kills (worse than random): organic_long, dump_fade_short, deletion_short, and every macro capitulation leg
   (gold 4th, US500/USTEC 0th). Key methodological finding: the naive null **over-credits momentum/selection
