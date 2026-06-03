@@ -27,22 +27,34 @@ from export.database import get_connection
 from backtest.engine import run_event_study, _load_prices
 
 
-def _rows(lookback_days=400, min_total=20):
+def _rows(lookback_days=400, min_total=20, use_store=None):
     """Per-(ticker,date): feature-store columns + the NEW-author recruitment feature,
-    over the pump-candidate universe (>= min_total mentions in the window)."""
+    over the pump-candidate universe (>= min_total mentions in the window).
+
+    Reads the native DuckDB research store (backtest/store.py) when present — columnar, no
+    SQLite re-scan — else attaches SQLite. Set lookback_days wide (e.g. 2200) to span the
+    deep-backfilled regimes (2021 mania / 2022 bear)."""
     import duckdb
     from datetime import datetime, timedelta
+    from backtest import store
     cutoff = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    con = duckdb.connect()
-    con.execute("INSTALL sqlite; LOAD sqlite;")
-    con.execute(f"ATTACH '{str(DB_PATH)}' AS s (TYPE sqlite, READ_ONLY)")
-    rows = con.execute(f"""
+    if use_store is None:
+        use_store = store.exists()
+    if use_store:
+        con = store.connect()                       # native columnar (fast path)
+        s = ""
+    else:
+        con = duckdb.connect()
+        con.execute("INSTALL sqlite; LOAD sqlite;")
+        con.execute(f"ATTACH '{str(DB_PATH)}' AS s (TYPE sqlite, READ_ONLY)")
+        s = "s."
+    res = con.execute(f"""
         WITH ta AS (
             SELECT m.ticker, CAST(substr(m.created_utc,1,10) AS DATE) AS d, m.author
-            FROM s.ticker_mentions m
+            FROM {s}ticker_mentions m
             WHERE substr(m.created_utc,1,10) >= '{cutoff}'
               AND m.ticker IN (
-                  SELECT ticker FROM s.ticker_mentions
+                  SELECT ticker FROM {s}ticker_mentions
                   WHERE substr(created_utc,1,10) >= '{cutoff}'
                   GROUP BY ticker HAVING COUNT(*) >= {min_total})
         ),
@@ -59,7 +71,7 @@ def _rows(lookback_days=400, min_total=20):
         fd AS (
             SELECT ticker, CAST(date AS DATE) AS d, mentions, mentions_z, per_author,
                    concentration, sentiment, sent_delta, accel, vel, breadth
-            FROM s.feature_daily
+            FROM {s}feature_daily
         ),
         j AS (
             SELECT fd.*, rec.new_authors,
@@ -80,8 +92,9 @@ def _rows(lookback_days=400, min_total=20):
                concentration, sentiment, sent_delta, accel, vel, breadth,
                new_authors, new_frac, new_frac_trail, new_auth_trail, new_z
         FROM o ORDER BY ticker, d
-    """).fetchall()
-    cols = [c[0] for c in con.description]
+    """)
+    cols = [d[0] for d in res.description]
+    rows = res.fetchall()
     con.close()
     return [dict(zip(cols, r)) for r in rows]
 

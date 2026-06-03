@@ -50,7 +50,9 @@ def signals(px):
     """The frozen distribution_short rule: a concentrated pump (per_author>=2, mentions>=10) with
     still-euphoric sentiment (>=0.4) whose price has ALREADY rolled over (trailing-5d return<0)."""
     out = []
-    for d in _rows():
+    # use_store=False: the live forward-OOS log must read fresh SQLite, never a stale research
+    # snapshot — otherwise newly-scraped signals would be missed as the clock accrues.
+    for d in _rows(use_store=False):
         if d["new_frac_trail"] is None:
             continue
         if ((d["per_author"] or 0) >= 2.0 and (d["mentions"] or 0) >= 10
