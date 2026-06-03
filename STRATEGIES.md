@@ -135,7 +135,7 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
     | QQQ | +0.41 → **+0.80** | 0.71 → 1.91 | 1.85 → **2.37** |
 
     **Both equity legs are now episode-level significant (t≈2.4-2.8) AND agree** — the earlier SPY≠QQQ noise-floor red flag is gone. Day-level is still only marginal (1.6-1.9), so not fully nailed, but this is a real upgrade from "fragile/unproven." The trend filter conclusion **hardens**: `trend+fear` (live) is still ≈0 excess (SPY +0.10/QQQ +0.11) ⇒ **drop `trend`, use fear-only** on the equity legs. AUDJPY confirmed best ungated (baseline +0.21 t=2.00; fear-gating *hurts* → +0.09).
-- **Expression (ALPHA-ONLY basket, trimmed 2026-06-03):** **AUDJPY + NZDJPY + AUDUSD + Gold (XAUUSD)** — the only legs with statistically-tradable excess (all t≥2). **Dropped:** US500/USTEC (t≈1, no alpha) and Silver (t=1.72, lumpy). All four are ungated. `euphoria_short` **parked** (it traded the dropped indices; −1.84 all-period excess). Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` (demo). The fear-gate is now moot for the live basket (no equity legs) but kept as research.
+- **Expression (GOLD-LED basket, finalised 2026-06-03 after MT5+OOS):** **Gold (XAUUSD) primary + AUDJPY small secondary.** The excess t-stats liked the whole AUD/NZD complex, but realistic execution + OOS kept only these two: **AUDUSD dropped** (failed OOS, PF 0.47), **NZDJPY dropped** (no OOS), US500/USTEC/Silver dropped earlier (no alpha). `euphoria_short` parked. Served via `/signals` (tag `retail_fear`); traded by `mql5/RedditMacro_EA.mq5` with **per-instrument params** — Gold StopATR 3 / hold 11 / risk 1.0%; AUDJPY StopATR 2 / hold 24 / risk 0.5% (its OOS-optimal long hold, half size as a secondary).
 - **Caveats:** single ~12mo bull regime; **46 cap-days = only ~13 distinct fear episodes** (clustered → effective n small); overlapping windows; edge small in absolute terms.
 - **Next:** leverage-language enrichment (calls/puts, margin/YOLO); longer history (data-limited); vol-target sizing; combine capitulation+bear-extreme into one composite trigger.
 
@@ -392,6 +392,11 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
 ## Changelog
+- **2026-06-03** — **Gold-led basket + per-instrument EA params.** Trimmed live `INSTRUMENTS` to the OOS
+  survivors: **XAUUSD (primary) + AUDJPY (small secondary)**; dropped AUDUSD (OOS PF 0.47) and NZDJPY
+  (no OOS). EA live basket now uses **per-leg** StopATR/MaxHoldDays/Risk (gold 3/11/1.0%, AUDJPY 2/24/0.5%)
+  instead of one shared set — so each instrument runs at its own OOS optimum. Recompiled; tester path
+  unchanged (gold full-period PF 1.46 sanity-checked).
 - **2026-06-03** — **Optimized AUDJPY+AUDUSD too → only GOLD survives OOS; set gold defaults; forward plan.**
   Same IS→OOS protocol: Gold robust (OOS PF 1.96/DD 18%), AUDJPY marginal (OOS PF 1.31, needs hold≈24,
   default hold-10 goes −ve), **AUDUSD overfits & fails OOS (1.78→0.47)** — its +excess t-stat doesn't trade
