@@ -121,7 +121,7 @@ def run(show_ledger=False):
     print(f"  squeeze tail (worst 5): " + ", ".join(f"{t} {r*100:+.0f}%" for _, t, r in tail[:5]))
     print(f"  best 5:                 " + ", ".join(f"{t} {r*100:+.0f}%" for _, t, r in tail[-5:]))
 
-    print("\n  by regime (the headline — regime-CONDITIONAL):")
+    print("\n  by regime (robust across all via puts — 2021 'weakness' is one uncapped squeeze):")
     byreg = defaultdict(list)
     bysig = defaultdict(list)
     for d in sig:
