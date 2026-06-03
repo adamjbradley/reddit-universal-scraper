@@ -43,15 +43,24 @@ input string AuthBearerToken = "";              // LIVE bearer token (optional)
 input string StrategyTag     = "retail_fear";   // LIVE strategy to trade
 input int    PollSeconds     = 300;             // LIVE poll interval sec
 input bool   ScaleByStrength = true;            // LIVE scale lots by strength
-input string AudJpySymbol    = "AUDJPY";        // LIVE broker symbol for AUDJPY (t=2.93)
-input string NzdJpySymbol    = "NZDJPY";        // LIVE broker symbol for NZDJPY (t=3.18)
-input string AudUsdSymbol    = "AUDUSD";        // LIVE broker symbol for AUDUSD (t=2.72)
-input string GoldSymbol      = "XAUUSD";        // LIVE broker symbol for Gold (t=2.03)
+// --- LIVE basket: GOLD-LED, PER-INSTRUMENT params (each leg uses its own OOS-tuned hold/stop/risk).
+//     AUDUSD/NZDJPY dropped (failed OOS). AUDJPY = small secondary at half risk. Set a symbol to "" to disable. ---
+input string GoldSymbol      = "XAUUSD";        // Gold broker symbol (PRIMARY)
+input double GoldStopATR     = 3.0;             //   gold: stop x ATR
+input int    GoldHold        = 11;              //   gold: max hold (days)
+input double GoldRisk        = 1.0;             //   gold: risk % per trade
+input string AudJpySymbol    = "AUDJPY";        // AUDJPY broker symbol (secondary)
+input double AudJpyStopATR   = 2.0;             //   AUDJPY: stop x ATR
+input int    AudJpyHold      = 24;              //   AUDJPY: max hold (days, long)
+input double AudJpyRisk      = 0.5;             //   AUDJPY: risk % per trade (small)
 
 CTrade        trade;
 CSignalClient client;
 bool   g_tester = false;
 string g_feed[4], g_broker[4];
+double g_legStop[4];               // live: per-leg stop x ATR
+int    g_legHold[4];               // live: per-leg max hold (days)
+double g_legRisk[4];               // live: per-leg risk % per trade
 int    g_n = 0;
 datetime g_sig[];
 int      g_sn = 0;
@@ -92,8 +101,8 @@ double CurrentRiskPct()
    return MathMin(f * 100.0, KellyCapPct);
 }
 
-// lot such that a stop-out (StopATR x ATR) ~= riskPct% of equity. Fixed method -> BaseLots.
-double SizedLot(string sym, int atrh, double riskPct)
+// lot such that a stop-out (stopMult x ATR) ~= riskPct% of equity. Fixed method -> BaseLots.
+double SizedLot(string sym, int atrh, double riskPct, double stopMult)
 {
    double minL = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
    double maxL = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
@@ -105,7 +114,7 @@ double SizedLot(string sym, int atrh, double riskPct)
    double tickSz  = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
    if(atr <= 0.0 || tickVal <= 0.0 || tickSz <= 0.0)
       return MathMax(minL, BaseLots);
-   double stopDist   = (StopATR > 0.0 ? StopATR : 1.0) * atr;     // risk measured to the stop
+   double stopDist   = (stopMult > 0.0 ? stopMult : 1.0) * atr;   // risk measured to the stop
    double riskMoney  = AccountInfoDouble(ACCOUNT_EQUITY) * riskPct / 100.0;
    double riskPerLot = (stopDist / tickSz) * tickVal;
    double lots = (riskPerLot > 0.0) ? riskMoney / riskPerLot : minL;
@@ -124,10 +133,12 @@ int OnInit()
    }
    client.Init(SignalsUrl, AuthBearerToken);
    g_n = 0;
-   if(StringLen(AudJpySymbol) > 0){ g_feed[g_n]="AUDJPY"; g_broker[g_n]=AudJpySymbol; g_n++; }
-   if(StringLen(NzdJpySymbol) > 0){ g_feed[g_n]="NZDJPY"; g_broker[g_n]=NzdJpySymbol; g_n++; }
-   if(StringLen(AudUsdSymbol) > 0){ g_feed[g_n]="AUDUSD"; g_broker[g_n]=AudUsdSymbol; g_n++; }
-   if(StringLen(GoldSymbol)   > 0){ g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;   g_n++; }
+   if(StringLen(GoldSymbol) > 0){
+      g_feed[g_n]="XAUUSD"; g_broker[g_n]=GoldSymbol;
+      g_legStop[g_n]=GoldStopATR; g_legHold[g_n]=GoldHold; g_legRisk[g_n]=GoldRisk; g_n++; }
+   if(StringLen(AudJpySymbol) > 0){
+      g_feed[g_n]="AUDJPY"; g_broker[g_n]=AudJpySymbol;
+      g_legStop[g_n]=AudJpyStopATR; g_legHold[g_n]=AudJpyHold; g_legRisk[g_n]=AudJpyRisk; g_n++; }
    for(int i = 0; i < g_n; i++) g_atrLive[i] = iATR(g_broker[i], PERIOD_D1, AtrPeriod);
    EventSetTimer(MathMax(10, PollSeconds));
    Print("RedditMacro_EA LIVE; strategy=", StrategyTag, " url=", SignalsUrl);
@@ -180,15 +191,15 @@ void OnTimer()
       bool   have = SC_HasPosition(sym, MagicNumber);
       if(wantLong[i] && !have)
       {
-         double lots = SizedLot(sym, g_atrLive[i], CurrentRiskPct())
+         double lots = SizedLot(sym, g_atrLive[i], g_legRisk[i], g_legStop[i])
                        * (ScaleByStrength ? MathMax(0.1, strength[i]) : 1.0);
          lots = SC_NormalizeLots(sym, lots);
          double atr = AtrVal(g_atrLive[i]);
          double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
-         double sl  = (StopATR > 0 && atr > 0) ? ask - StopATR * atr : 0.0;
+         double sl  = (g_legStop[i] > 0 && atr > 0) ? ask - g_legStop[i] * atr : 0.0;
          if(lots > 0 && trade.Buy(lots, sym, 0.0, sl, 0.0)) Print("OPEN long ", sym, " lots=", lots);
       }
-      else if(have && (!wantLong[i] || SC_PositionAgeDays(sym, MagicNumber) >= MaxHoldDays))
+      else if(have && (!wantLong[i] || SC_PositionAgeDays(sym, MagicNumber) >= g_legHold[i]))
       {
          if(trade.PositionClose(sym))
             Print("CLOSE ", sym, (!wantLong[i] ? " (signal cleared)" : " (max hold)"));
@@ -256,7 +267,7 @@ void OnTick()
       g_armBars++;
       if(TurnConfirmed())
       {
-         double lots = SizedLot(_Symbol, g_atr, CurrentRiskPct());
+         double lots = SizedLot(_Symbol, g_atr, CurrentRiskPct(), StopATR);
          double atr  = AtrVal(g_atr);
          double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          double sl   = (StopATR > 0 && atr > 0) ? ask - StopATR * atr : 0.0;

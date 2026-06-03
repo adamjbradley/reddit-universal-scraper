@@ -21,20 +21,19 @@ HORIZON_DAYS = 10        # holding period that maximised the bounce
 # the signal GENERALISES across risk assets - so we spread across the robust ones rather
 # than bet one. The EA maps these to its broker's symbol names.
 INSTRUMENTS = [
-    # ALPHA-ONLY basket (2026-06-03). The cross-asset map (capitulation-long, VIX-gated, 10d
-    # excess) found statistically-tradable alpha ONLY in the risk-on FX complex (AUD/NZD) and
-    # gold. DROPPED for lack of significant excess: US500 (t=0.90), USTEC (t=1.13), and silver
-    # (XAGUSD t=1.72 - high excess but lumpy/one-rally). The edge is a risk-appetite/fear-reversal
-    # factor; these four are its clean expressions. (AUDCHF/NZDCHF/NZDUSD/EURJPY also validate, t>2.3
-    # - available to add, but they're the SAME factor so the marginal diversification is small.)
-    {"symbol": "AUDJPY", "asset": "fx",        "note": "t=2.93 (win 66%, 2016-26)"},
-    {"symbol": "NZDJPY", "asset": "fx",        "note": "t=3.18 - strongest of the cross-section"},
-    {"symbol": "AUDUSD", "asset": "fx",        "note": "t=2.72 - same factor, USD-funded"},
-    {"symbol": "XAUUSD", "asset": "commodity", "note": "gold t=2.03 - the fear-bid leg"},
+    # GOLD-LED basket (2026-06-03). The excess t-stats liked the whole AUD/NZD FX complex, but
+    # realistic MT5 execution + OUT-OF-SAMPLE validation collapsed it to essentially one leg:
+    #   GOLD     - robust (OOS PF 1.96, DD 18%)              -> primary
+    #   AUDJPY   - marginal (OOS PF 1.31, needs a long hold) -> small secondary
+    #   AUDUSD   - overfit, FAILS OOS (PF 0.47)              -> DROPPED (its +excess didn't trade)
+    #   NZDJPY   - never OOS-validated (no broker history)   -> DROPPED
+    # Per-instrument params (hold/stop/risk) live in the MT5 EA; AUDJPY runs at half risk.
+    {"symbol": "XAUUSD", "asset": "commodity", "note": "GOLD - primary; OOS PF 1.96 / DD 18% (robust)"},
+    {"symbol": "AUDJPY", "asset": "fx",        "note": "secondary, small; OOS PF 1.31 (marginal, long hold)"},
 ]
 
 # Feed symbol -> price-table (Yahoo) symbol.
-PRICE_SYMBOL = {"AUDJPY": "AUDJPY=X", "NZDJPY": "NZDJPY=X", "AUDUSD": "AUDUSD=X", "XAUUSD": "GC=F"}
+PRICE_SYMBOL = {"XAUUSD": "GC=F", "AUDJPY": "AUDJPY=X"}
 # No equity legs in the alpha-only basket -> nothing to trend/fear-gate (kept for the API field).
 GATE_TREND = set()
 EUPH_THRESHOLD = 0.85   # rrai_pct >= this = retail euphoria (short only in a downtrend)
