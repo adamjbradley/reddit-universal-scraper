@@ -357,7 +357,27 @@ with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). 
 - **Sizing verdict: ATR/Fixed win; Kelly OVERSIZES.** Even half-Kelly hit its cap on these thin edges and blew drawdowns to 30% (AUDJPY) / 80% (Gold) with PF≈1.0 — no return benefit. The textbook result: **Kelly is too aggressive for thin/uncertain edges; fixed-fractional ATR (~1%/trade) is the right default.**
 - **Still preliminary:** PFs are modest, gold DD is high (33-45%), and this is in-sample on the same series the signal was built on. Forward OOS + a small live demo allocation are the next validation steps. But the basket is now **tradeable, not just a statistical curiosity.**
 
+## MT5 parameter optimization (Gold, 2026-06-03) — in-sample optimize → OOS validate
+Ran the **MT5 genetic optimizer** (headless; every pass logged via frames to `rrai_opt_log.csv`;
+`mql5/RedditMacro_Optimize.ini`) on Gold, sweeping ArmWindow / StopATR / MaxHoldDays, **in-sample 2018-2022**,
+maximising net profit — then **validated the winners out-of-sample (2023-2026)**:
+
+| param set | IS PF / DD | **OOS PF / DD / win** |
+|---|---|---|
+| profit-max (stop 1.0, hold 5) | 1.52 / 55% | 1.52 / 42% / 52% |
+| **robust (stop 3.0, hold 11)** | 1.53 / 33% | **1.96 / 18% / 62%** |
+| default (stop 2.0, hold 10) | — | 1.75 / 26% / 56% |
+
+- **Encouraging:** the signal **didn't badly overfit** — *every* parameter set stayed profitable OOS (PF 1.5-2.0). The gold leg is robust to parameter choice.
+- **But "max profit" is the wrong objective:** it picked a tight-stop / quick-exit corner with **2-3× the drawdown** (42-55%) for the *same* PF. **The robust set (wide stop 3×ATR, hold ~11d) wins OOS: PF 1.96, DD 18%, win 62%** — optimise for *risk-adjusted* return (Sharpe/PF-with-DD), not raw profit.
+- **ArmWindow ≥3 is irrelevant** (the turn arrives within ~3 bars). The live params worth using on gold: **StopATR≈3, MaxHoldDays≈11**.
+- Caveat: gold only (the strongest leg); ~40 IS / ~16-27 OOS trades — still small. Per-instrument optimisation + forward OOS remain the next steps.
+
 ## Changelog
+- **2026-06-03** — **MT5 optimizer run (gold): in-sample optimize → OOS validate.** Genetic sweep of
+  entry/exit params, profit-maximised IS (2018-22), validated OOS (2023-26). Signal didn't badly overfit
+  (all sets OOS-profitable, PF 1.5-2.0) but max-profit = a high-DD corner (42-55%); the **robust set (stop
+  3×ATR / hold 11) is best OOS: PF 1.96, DD 18%, win 62%**. Added headless frame-logging + `RedditMacro_Optimize.ini`.
 - **2026-06-03** — **Turn entry + stop makes it tradeable; sizing methods backtested.** Added to the EA: arm
   on capitulation → enter on the first up-bar (turn) within ArmWindow, with a StopATR×ATR stop; plus
   selectable sizing (Fixed/ATR/Kelly). The turn entry **rescues the strategy**: AUDJPY PF 0.77→1.06, Gold
