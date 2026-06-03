@@ -41,6 +41,18 @@ STOPLIST = {
     "EOY", "MOM", "DAD", "BRO", "GUY", "LMAO", "RIP", "DCA", "SP", "SPX", "DJI",
 }
 
+# AMBIGUOUS: valid US symbols that are ALSO common all-caps English words. WSB emphasis
+# ("gonna BOOM", "LIVE", "GOOD luck") leaked these as bare-token tickers and badly polluted
+# downstream signals (distribution_short doubled once they were dropped — see backtest/
+# dist_short_oos.py). Rejected in the BARE path only; an explicit $CASHTAG still extracts them
+# (a bare "OPEN" is the word; "$OPEN" is Opendoor). Add new false positives here as they appear.
+AMBIGUOUS = {
+    "LIVE", "GOOD", "TIME", "SOAR", "BOOM", "PR", "SI", "OPEN", "REAL", "CASH", "PLAY",
+    "WELL", "BEST", "LOVE", "HOPE", "FREE", "GAIN", "SAVE", "PLUS", "NICE", "SAFE", "FAST",
+    "RICH", "GROW", "RIDE", "EDGE", "WORK", "MOVE", "CARE", "FLOW", "HUGE", "PEAK", "TRUE",
+    "WISH", "EYES", "HEAR", "TELL", "TURN", "STEP", "LIFE", "MAIN", "BOND", "FUND", "DATA",
+}
+
 _symbols = None
 
 
@@ -103,10 +115,11 @@ def extract_tickers(text):
         sym = m.upper()
         if sym not in STOPLIST:
             found.add(sym)
-    # Bare uppercase tokens validated against the symbol universe
+    # Bare uppercase tokens validated against the symbol universe. Reject hard-stoplist
+    # acronyms AND ambiguous common words (the latter require an explicit $cashtag above).
     symbols = _load_symbols()
     for m in _BARE.findall(text):
-        if m in STOPLIST:
+        if m in STOPLIST or m in AMBIGUOUS:
             continue
         if m in symbols:
             found.add(m)

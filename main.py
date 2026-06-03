@@ -1595,6 +1595,18 @@ Commands:
                 build_all()
             except Exception as e:
                 print(f"⚠️ Feature-store step skipped: {e}")
+            # Append fresh distribution_short signals to the forward-OOS log and close any whose
+            # 10d window completed. Spec frozen 2026-06-03 — signals >= freeze are genuine OOS,
+            # accruing the one gate the edge hasn't faced. Runs AFTER the feature rebuild so it
+            # sees the latest signals. (See backtest/dist_short_oos.py.)
+            try:
+                from backtest.dist_short_oos import update as dist_short_oos_update
+                _oc, _n_new, _n_closed = dist_short_oos_update()
+                _oc.close()
+                if _n_new or _n_closed:
+                    print(f"📝 distribution_short OOS log: +{_n_new} new signal(s), {_n_closed} closed")
+            except Exception as e:
+                print(f"⚠️ distribution_short OOS step skipped: {e}")
 
         if args.every:
             from scheduler import control as sched_control
