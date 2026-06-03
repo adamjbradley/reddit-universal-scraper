@@ -31,8 +31,9 @@ _Last updated: 2026-06-03. Update this section whenever a status, metric, or nex
 | `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | ✅ **The one validated edge — robust across regimes (via puts)** | **+11.78%/trade naked, +13.3% puts-capped (t=3.57, PF 3.84, Sharpe 2.27).** **Positive in EVERY regime once the tail is capped** (2021 +3.5% / 2022 +18.7% / 2025-26 +21%) — the earlier "regime-conditional/dead-in-2021" label was an artifact of ONE uncapped squeeze (BFRI −115%); 2021 median is +3%, win 64%. Generalizes micro→small→mid, **REVERSES on large/mega** (−1.9%, win 31%); strongest in liquid $5-15 band (t=5.26). **MT5-validated on broker prices** (36/37 names tradeable, +11.02%). | forward-OOS clock accruing; **trade liquid small/mid names via PUTS, tight-spread only** |
 | ~~`frothy_retail_regime`~~ (regime filter / kill-switch) | Meta / regime | ❌ **NOT NEEDED — resolved** | Investigated for a mania detector; the premise was wrong. The "2021 regime failure" was **a single uncapped squeeze (BFRI −115%)** dragging the mean to 0 — the 2021 **median is +3%, win 64%** (signal works fine). Re-squeeze rate is *lowest* in 2021; IWM-hedge ≈ SPY-hedge. **PUTS cap the tail** → 2021 +0.06%→**+3.46%**, other regimes unchanged, overall +13.3%. A gate would wrongly switch OFF a positive 2021 edge. | **closed** — no detector; the always-puts rule already handles the only regime-specific risk |
 | `author_alpha` (predictive-user track records) | Equity / meta | 🟡 **Persists statistically, NOT tradeable PIT** | Split-half persistence is real (`backtest/author_alpha.py`: corr +0.27, 8.7% clear t>2 vs 2.5% chance) — BUT the walk-forward PIT fade (`backtest/author_fade.py`, 30d maturation buffer, costs) **deflates it**: FADE-bad −0.56% ≈ FADE-all −0.60% (author quality adds ~nothing); FOLLOW-good **−4.17%** (trailing-good is anti-predictive). Works only in **2021 mania** (+3.13%, t=16) and **loses in current regime** (−1.10%). The 9.7pp split-half spread was gross/in-sample. | regime-gate (mania-only fade, single-regime) or extreme-worst-author filter; otherwise shelved — statistical ≠ tradeable |
-| `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
-| `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
+| `smallcap_pump_fade` | Equity | 🟢 **Robust across regimes — investigate** | **Revalidation upgrade:** sign-stable POSITIVE every regime (2021 +6% / 2024 +4% / 25-26 +10%, t4.2); passes null 100th/100th. A broader/weaker cousin of `distribution_short` (small-cap pump fade, no sentiment+rollover gate) — the only "other" strategy to survive the regime-split. | study the union with distribution_short; own-universe null; puts |
+| `fade_organic_short` | Equity | ❌ **One-period artifact (revalidated)** | Passes selection null (100th) but regime-split shows the edge is **2024-only** (+23%); ~0 every other regime | dropped |
+| `pump_long` (ride) | Equity | ❌ **Regime LOSER (revalidated)** | Passes selection null but regime-split: **−2/−10/−19/−12% in 2021-24**, +14% only 25-26 — momentum-chase that loses when momentum reverts | dropped |
 | `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
 | `organic_long` | Equity | ❌ Failed | −4.2%, sign-stable loser | inverse → `fade_organic_short` |
 
@@ -542,6 +543,15 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **★ FULL revalidation audit on the multi-year corpus (564k mentions, 4-5× data).**
+  Re-ran `null_all` + regime-split + macro null + distribution_short on the expanded 2021-2026 data.
+  **All kills held** (macro capitulation 3rd-pct drift; organic_long/dump_fade/deletion worse-than-random).
+  The null's "REAL EDGE" labels were again exposed by the regime-split: `biotech_catalyst` FLIPS (−8% 2021 →
+  +22% now), `attention_fade` & `fade_organic_short` are **one-period (2024-only)** artifacts, `pump_long` is a
+  **regime LOSER** (−2/−10/−19/−12% in 2021-24). **One upgrade:** `smallcap_pump_fade` is **sign-stable positive
+  across every regime** (2021 +6% / 2024 +4% / 25-26 +10%, t4.2) — a broader/weaker cousin of distribution_short,
+  the only "other" strategy to survive the regime-split → worth investigating the union. distribution_short
+  re-confirmed (+11.78%, null 100th, robust via puts).
 - **2026-06-03** — **★ Multi-regime validation + frothy-retail regime added to the scoreboard.** Deep-backfilled
   the corpus to 2021 (`archive_backfill_deep`, 5 micro-cap subs, 330k+ posts; DuckDB research store, 9.6× faster).
   Three-regime test (`backtest/regime_test.py`, `backtest/distribution_short.py`): distribution_short is
