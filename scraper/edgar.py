@@ -7,7 +7,10 @@ it's filed. This module maps ticker->CIK and returns offering filing dates per t
 
 Free, no API key; SEC requires a declared User-Agent and ~10 req/s max.
 """
+import time
 import requests
+
+from export.database import get_connection
 
 UA = {"User-Agent": "reddit-signals-research adam_j_bradley@yahoo.com"}
 
@@ -26,25 +29,75 @@ _CIK = None
 
 
 def _cikmap():
+    """ticker->CIK map, cached in the DB (edgar_cik) so a fresh process / a 429 on the live
+    file doesn't re-fetch or break. Falls back to live fetch only when the cache is empty."""
     global _CIK
-    if _CIK is None:
-        r = requests.get("https://www.sec.gov/files/company_tickers.json", headers=UA, timeout=30)
-        _CIK = {d["ticker"].upper(): str(d["cik_str"]).zfill(10) for d in r.json().values()}
+    if _CIK is not None:
+        return _CIK
+    c = get_connection()
+    c.execute("CREATE TABLE IF NOT EXISTS edgar_cik (ticker TEXT PRIMARY KEY, cik TEXT)")
+    rows = c.execute("SELECT ticker, cik FROM edgar_cik").fetchall()
+    if rows:
+        _CIK = {r["ticker"]: r["cik"] for r in rows}
+        c.close()
+        return _CIK
+    r = requests.get("https://www.sec.gov/files/company_tickers.json", headers=UA, timeout=30)
+    _CIK = {d["ticker"].upper(): str(d["cik_str"]).zfill(10) for d in r.json().values()}
+    c.executemany("INSERT OR REPLACE INTO edgar_cik VALUES (?,?)", list(_CIK.items()))
+    c.commit()
+    c.close()
     return _CIK
 
 
-def filings(ticker, forms=None):
-    """[(form, filingDate)] from EDGAR's recent-submissions feed (last ~1000 filings)."""
+def _sub_cache_get(ticker):
+    c = get_connection()
+    c.execute("CREATE TABLE IF NOT EXISTS edgar_submissions "
+              "(ticker TEXT, form TEXT, filing_date TEXT, accession TEXT, primary_doc TEXT)")
+    rows = c.execute("SELECT form, filing_date, accession, primary_doc FROM edgar_submissions "
+                     "WHERE ticker=?", (ticker.upper(),)).fetchall()
+    c.close()
+    return [(r["form"], r["filing_date"], r["accession"], r["primary_doc"]) for r in rows] or None
+
+
+def _sub_cache_put(ticker, rows):
+    c = get_connection()
+    c.execute("CREATE TABLE IF NOT EXISTS edgar_submissions "
+              "(ticker TEXT, form TEXT, filing_date TEXT, accession TEXT, primary_doc TEXT)")
+    c.execute("DELETE FROM edgar_submissions WHERE ticker=?", (ticker.upper(),))
+    c.executemany("INSERT INTO edgar_submissions VALUES (?,?,?,?,?)",
+                  [(ticker.upper(), f, d, a, p) for f, d, a, p in rows])
+    c.commit()
+    c.close()
+
+
+def _submissions(ticker):
+    """All (form, filingDate, accession, primaryDoc) for a ticker — DB-cached read-through.
+    First call per ticker hits EDGAR and stores; later calls (even new processes) read the DB,
+    so a 150-ticker drill fetches each name once, ever, instead of re-hammering SEC -> no 429."""
+    cached = _sub_cache_get(ticker)
+    if cached is not None:
+        return cached
     cik = _cikmap().get(ticker.upper())
     if not cik:
         return []
     try:
-        s = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=UA, timeout=30).json()
+        s = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=UA, timeout=30)
+        if s.status_code == 429:
+            time.sleep(2)
+            return []                          # don't poison the cache on a throttle
+        rec = s.json().get("filings", {}).get("recent", {})
     except Exception:
         return []
-    rec = s.get("filings", {}).get("recent", {})
-    out = list(zip(rec.get("form", []), rec.get("filingDate", [])))
-    return [(f, d) for f, d in out if forms is None or f in forms]
+    rows = list(zip(rec.get("form", []), rec.get("filingDate", []),
+                    rec.get("accessionNumber", []), rec.get("primaryDocument", [])))
+    if rows:
+        _sub_cache_put(ticker, rows)
+    return rows
+
+
+def filings(ticker, forms=None):
+    """[(form, filingDate)] from the cached submissions feed."""
+    return [(f, d) for f, d, _, _ in _submissions(ticker) if forms is None or f in forms]
 
 
 def offering_dates(ticker):
@@ -70,16 +123,9 @@ def form4_buys(ticker, limit=60):
     cik = _cikmap().get(ticker.upper())
     if not cik:
         return []
-    try:
-        s = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=UA, timeout=30).json()
-    except Exception:
-        return []
-    rec = s.get("filings", {}).get("recent", {})
-    forms = rec.get("form", []); accs = rec.get("accessionNumber", [])
-    docs = rec.get("primaryDocument", []); dates = rec.get("filingDate", [])
     buys = set()
     seen = 0
-    for form, acc, doc, fdate in zip(forms, accs, docs, dates):
+    for form, fdate, acc, doc in _submissions(ticker):
         if form not in INSIDER or not doc.endswith(".xml"):
             continue
         seen += 1
