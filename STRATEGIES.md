@@ -391,6 +391,20 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
+## Comprehensive optimization (all 7 params, gold IS 2018-22) — profit-max = a leverage trap
+Swept **every return-impacting param** (TurnEntry, ArmWindow, StopATR, MaxHoldDays, AtrPeriod, SizingMethod,
+RiskPctPerTrade), genetic, max-profit. Result:
+
+| config | PF | DD% | net |
+|---|---|---|---|
+| profit-max (turn OFF, stop 1.0, hold 5, **risk 2.0**) — IS | 1.54 | **67** | +$425k |
+| same — **OOS** 23-26 | 1.45 | **67** | +$15.6k |
+| robust (turn ON, stop 3, hold 11, risk 1.0) — OOS | 1.27 | **22** | +$1.2k |
+
+- **`RiskPctPerTrade` maxed out at the sweep ceiling (2.0)** — it's pure **leverage** (scales profit *and* DD ~linearly), so a profit-max just compounds it to a **67% drawdown**. Risk% is a *risk-tolerance dial, not an edge param* — exclude it from profit optimization.
+- The profit-max also flipped to **`turn=OFF` + tight stop + quick exit** — a different "cut-losses-fast" mechanism that **held OOS (PF 1.45)** but at 67% DD (undeployable). `AtrPeriod` showed no strong effect.
+- **Optimising for profit picks a high-leverage / high-DD corner.** The deployable answer is the **risk-adjusted** one: the robust config (turn entry, stop 3, hold 11, risk 1%) — ~same PF at **a third of the drawdown**. EA defaults left on robust.
+
 ## ⚠️ MT5 deployable-config report + honesty correction (2026-06-03)
 Ran the current per-instrument config in the MT5 tester:
 
@@ -430,6 +444,11 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Comprehensive optimization (all 7 params) → profit-max is a leverage trap.** Swept
+  TurnEntry/ArmWindow/StopATR/MaxHoldDays/AtrPeriod/SizingMethod/RiskPct (genetic, gold IS). RiskPct maxed
+  to the 2.0 ceiling (it's leverage, not edge) → 67% DD; profit-max flipped to turn-OFF/tight-stop/quick-exit
+  (+$425k IS, held OOS PF 1.45 but 67% DD = undeployable). The risk-adjusted answer stays the robust config
+  (turn/stop3/hold11/risk1%): ~same PF at 22-33% DD. Lesson: optimise risk-adjusted, set RiskPct by tolerance.
 - **2026-06-03** — **MT5 deployable-config report + honesty correction.** Ran the current per-instrument config:
   Gold full PF 1.46 / OOS 1.27 (DD 22-33%); AUDJPY full PF 1.63 / OOS 1.25 (DD 2-3%). Both legs +ve IS *and*
   OOS. **Corrected an overstatement:** the earlier "gold OOS PF 1.96" used ArmWindow=7; the shipped default

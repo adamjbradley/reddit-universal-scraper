@@ -290,10 +290,11 @@ double OnTester()
    double prof = TesterStatistics(STAT_PROFIT);
    if(MQLInfoInteger(MQL_OPTIMIZATION))
    {
-      double m[10];
+      double m[12];
       m[0]=ArmWindow; m[1]=StopATR; m[2]=MaxHoldDays; m[3]=(double)SizingMethod; m[4]=RiskPctPerTrade;
-      m[5]=TesterStatistics(STAT_TRADES); m[6]=prof; m[7]=TesterStatistics(STAT_PROFIT_FACTOR);
-      m[8]=TesterStatistics(STAT_EQUITYDD_PERCENT); m[9]=TesterStatistics(STAT_SHARPE_RATIO);
+      m[5]=AtrPeriod; m[6]=(TurnEntry ? 1.0 : 0.0);
+      m[7]=TesterStatistics(STAT_TRADES); m[8]=prof; m[9]=TesterStatistics(STAT_PROFIT_FACTOR);
+      m[10]=TesterStatistics(STAT_EQUITYDD_PERCENT); m[11]=TesterStatistics(STAT_SHARPE_RATIO);
       FrameAdd("R", 0, prof, m);
       return prof;
    }
@@ -327,7 +328,7 @@ int OnTesterInit()
    int h = FileOpen("rrai_opt_log.csv", FILE_COMMON|FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
    if(h != INVALID_HANDLE)
    {
-      FileWrite(h, "arm","stopatr","hold","sizing","risk","trades","net","pf","dd","sharpe");
+      FileWrite(h, "arm","stopatr","hold","sizing","risk","atrp","turn","trades","net","pf","dd","sharpe");
       FileClose(h);
    }
    return(INIT_SUCCEEDED);
@@ -339,13 +340,13 @@ void OnTesterPass()
    ulong pass; string name; long id; double val; double data[];
    while(FrameNext(pass, name, id, val, data))
    {
-      if(name != "R" || ArraySize(data) < 10) continue;
+      if(name != "R" || ArraySize(data) < 12) continue;
       int h = FileOpen("rrai_opt_log.csv", FILE_COMMON|FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
       if(h != INVALID_HANDLE)
       {
          FileSeek(h, 0, SEEK_END);
-         FileWrite(h, (int)data[0], data[1], (int)data[2], (int)data[3], data[4],
-                      (int)data[5], data[6], data[7], data[8], data[9]);
+         FileWrite(h, (int)data[0], data[1], (int)data[2], (int)data[3], data[4], (int)data[5], (int)data[6],
+                      (int)data[7], data[8], data[9], data[10], data[11]);
          FileClose(h);
       }
    }
