@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated + **MT5-tradeable (turn entry)** | **EXCESS vs B&H** robust (AUDJPY t(exc)=2.93, +ve 9/10 yrs; generalises across AUD/NZD FX + gold). Naive long-on-trigger *failed* in MT5 (PF 0.77), **but a turn-based entry + ATR stop fixes it: AUDJPY PF 1.06, Gold PF 1.54 / Sharpe 0.41** (ATR/Fixed sizing; Kelly oversizes). | forward OOS + small demo allocation; gold is the strongest leg |
+| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated + **MT5-tradeable (turn entry)** | **EXCESS vs B&H** robust (AUDJPY VIX-gated t(exc)=2.93, +ve 8/9 yrs 2018-26; ungated t=2.52 2016-26; generalises across AUD/NZD FX + gold). Naive long-on-trigger *failed* in MT5 (PF 0.77), **but a turn-based entry + ATR stop fixes it: AUDJPY PF 1.06, Gold PF 1.54 / Sharpe 0.41** (ATR/Fixed sizing; Kelly oversizes). | forward OOS + small demo allocation; gold is the strongest leg |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -82,7 +82,7 @@ ratios (coverage-stationary); 90-day trailing percentile. `analytics/features.py
 - **Spec (shipped):** long when `rrai_pct ≤ 0.15` **AND** `VIX ≥ 18`; hold ~10d; size by extremity; **fear-side only**.
 - **Evidence (12mo, net, 10d):** **excess over buy-&-hold** SPY +0.17pp / QQQ +0.23pp / **AUDJPY +0.47pp** (win 88%); `bear_extreme` +0.24/+0.32/+0.36pp corroborates. **VIX gate ~4×'d it** (SPY +1.56%/10d in fear vs +0.42% calm). Modest **timing tilt**, not standalone alpha (buy-&-hold already won 66–75%).
 - **Instrument scan (17 MT5 instruments, 10d excess vs buy-&-hold):** the signal **generalises across the risk-on basket** — Silver +2.22pp (lumpy, one big rally → size small), Gold +0.59pp (robust, +ve every regime), AUDJPY +0.47pp (steadiest, win 88%), SP500 +0.17pp. Oil (+1.82pp but one-episode) and crypto (BTC net-negative) **dropped**. Generalisation across assets is itself evidence it's a real risk-appetite signal.
-- **★ Cross-sectional FX validation (2026-06-03, 2016-26, VIX-gated) — proves it's a RISK-ON-CURRENCY factor, not an AUDJPY fluke.** Ran capitulation-long across the yen-cross + risk-pair complex. The edge travels with the **risk-on currency (AUD/NZD)**, *independent of the funding leg* — and the **controls fail**, which is the real proof:
+- **★ Cross-sectional FX validation (2026-06-03, effective 2018-26 VIX-gated — the VIX≥18 gate has *no* signals in the calm 2016-17, so it starts Feb-2018/Volmageddon) — proves it's a RISK-ON-CURRENCY factor, not an AUDJPY fluke.** Ran capitulation-long across the yen-cross + risk-pair complex. The edge travels with the **risk-on currency (AUD/NZD)**, *independent of the funding leg* — and the **controls fail**, which is the real proof:
 
   | pair | character | excess | t(exc) |
   |---|---|---|---|
@@ -299,6 +299,7 @@ whether crypto leads equities / risk-appetite. **It doesn't — it's coincident:
 
 ## ★ Cross-asset generalization map (2026-06-03) — it's a RISK-APPETITE / FEAR-REVERSAL factor
 Capitulation-long (rrai≤0.15 & VIX≥18, 10d, excess vs buy-and-hold) tested across asset classes.
+_Effective window **2018-02 → 2026-04** — the VIX≥18 gate has no signals in the low-vol 2016-17._
 The signal fires wherever the instrument is a clean **risk-on** or **fear-bid** play, and is flat
 everywhere else — the pattern of winners *and* losers is mechanistically coherent (= a real factor):
 
@@ -321,7 +322,7 @@ dollars (it *declined*, so +excess ≠ +absolute) and 60%+ DD → deployable ver
 After fixing the EA's position sizing (ATR fixed-fractional, risk 1%/trade) and hold (trading days),
 the MT5 tester is finally trustworthy (FX-leg drawdowns fell from ~90% to ~17-20%). It tells a sobering story:
 
-| leg (VIX-gated entry, ATR-sized, 10 trading-day hold, 2016-26) | trades | win% | PF | maxDD% |
+| leg (VIX-gated entry, ATR-sized, 10 trading-day hold, **2018-26**) | trades | win% | PF | maxDD% |
 |---|---|---|---|---|
 | AUDJPY | 67 | 41.8 | **0.85** | 20 |
 | AUDUSD | 67 | 55.2 | **0.91** | 17 |
@@ -341,7 +342,7 @@ naive long-on-trigger trade. Predicted fix: catch the *turn*, not the first fall
 
 ### ✅ RESOLVED — turn-based entry + stop makes it tradeable (2026-06-03)
 Added to the EA: **arm on a capitulation signal, then enter on the first up-bar (the turn) within `ArmWindow`,
-with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). MT5 results (VIX-gated, 2016-26):
+with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). MT5 results (VIX-gated → **2018-26**):
 
 | symbol | sizing | entry | win% | PF | DD% | Sharpe |
 |---|---|---|---|---|---|---|
@@ -378,7 +379,7 @@ with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). 
   (copper/oil)**; AUDNZD control flat. MT5 tester (D1, 2016-26, ungated): AUDJPY +$10.4k/PF 1.14, AUDUSD
   ~flat-$ (declined, +excess only), 60% DD → needs VIX gate + vol-target to deploy.
 - **2026-06-03** — **Cross-sectional FX validation → broadened the basket.** Tested capitulation-long across
-  the yen-cross + risk-pair complex (2016-26, VIX-gated). The edge is a **risk-on-currency factor**: every
+  the yen-cross + risk-pair complex (2018-26, VIX-gated). The edge is a **risk-on-currency factor**: every
   AUD/NZD pair is significant (NZDJPY t=3.18, AUDJPY 2.93, AUDCHF 2.83, AUDUSD 2.72) *independent of the
   funding leg*, while the no-risk-leg controls are flat (USDJPY t=1.02, CHFJPY 1.37, EURUSD 1.44) — the
   controls failing is the proof it's real, not data-mining. It's NOT a JPY thing (JPY is just a clean
@@ -389,7 +390,7 @@ with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). 
   **flipped negative** — gone≥0.20 → −19.3%/10d (n=87), young_frac short −39%→−87% — dominated by squeeze
   tails (IXHL −625%) the 25% sample had missed. The +14.3% was a **coverage-bias artifact**. Dead as a
   stock short; puts-only. `distribution_short` (price-rolling-over filter) is the survivor.
-  (2) **AUDJPY capitulation re-validated on 2016-26**: +0.48%/10d VIX-gated, **t(exc)=2.93**, +ve 9/10 years
+  (2) **AUDJPY capitulation re-validated**: VIX-gated +0.48%/10d **t(exc)=2.93 (2018-26**, the gate excludes calm 2016-17), **+ve 8/9 years**; ungated +0.26% t=2.52 (2016-26)
   (2018 the lone falling-knife miss). Now the most significant edge in the system; unaffected by author work (pure macro).
   (3) `get_authors_needing_age` now skips crypto-only authors + front-loads ticker-mentioners.
 - **2026-06-03** — **Crypto leading-indicator test: COINCIDENT, not leading.** Price lead-lag BTC↔SPY ≈0
