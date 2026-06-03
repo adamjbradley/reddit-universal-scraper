@@ -94,6 +94,65 @@ def simulate(sym, dateset, turn=True, arm=5, stopATR=3.0, hold=11, atrp=14, risk
             "net_pct": (equity - 1.0) * 100.0, "maxdd_pct": maxdd * 100.0}
 
 
+def buy_hold(sym, start=None, end=None):
+    """Own the instrument continuously over the window: total return + max drawdown on close."""
+    dates, o, h, l, cl = _series(sym)
+    idx = [i for i in range(len(dates)) if (start is None or dates[i] >= start) and (end is None or dates[i] < end)]
+    if len(idx) < 2:
+        return None
+    peak, mdd = cl[idx[0]], 0.0
+    for i in idx:
+        peak = max(peak, cl[i])
+        mdd = max(mdd, (peak - cl[i]) / peak)
+    return {"net_pct": (cl[idx[-1]] / cl[idx[0]] - 1) * 100, "maxdd_pct": mdd * 100, "days": len(idx)}
+
+
+def random_entry_test(sym, vix, M=1000, seed=42, start=None, end=None, **cfg):
+    """Monte Carlo: does entering on CAPITULATION dates beat entering on the same number of
+    RANDOM dates (identical turn/stop/hold/sizing mechanics)? Returns the strategy's percentile
+    in the random-net distribution. >95 = real timing edge; ~50 = no edge (just the drift)."""
+    import random
+    actual = simulate(sym, vix, start=start, end=end, **cfg)
+    if not actual or "note" in actual:
+        return None
+    dates, _, _, _, _ = _series(sym)
+    pool = [d for d in dates if (start is None or d >= start) and (end is None or d < end)]
+    n_trig = len([d for d in vix if (start is None or d >= start) and (end is None or d < end)])
+    rng = random.Random(seed)
+    nets = []
+    for _ in range(M):
+        rd = set(rng.sample(pool, min(n_trig, len(pool))))
+        r = simulate(sym, rd, start=start, end=end, **cfg)
+        if r and "note" not in r:
+            nets.append(r["net_pct"])
+    nets.sort()
+    pct = 100.0 * sum(1 for x in nets if x < actual["net_pct"]) / len(nets)
+    med = nets[len(nets) // 2]
+    p95 = nets[int(len(nets) * 0.95)]
+    return {"strat_net": actual["net_pct"], "strat_pf": actual["pf"], "n": actual["n"],
+            "rand_median": med, "rand_p95": p95, "percentile": pct}
+
+
+def run_benchmarks():
+    vix = capitulation_sets()["vixgated"]
+    legs = {"XAUUSD": dict(turn=True, arm=5, stopATR=3.0, hold=11),
+            "AUDJPY": dict(turn=True, arm=5, stopATR=2.0, hold=24, riskPct=0.5)}
+    print("=== STRATEGY vs RANDOM-ENTRY (Monte Carlo, 1000x) vs BUY-AND-HOLD (2018-26) ===")
+    print("    random = same #entries, same turn/stop/hold/sizing, but RANDOM dates\n")
+    for sym, cfg in legs.items():
+        r = random_entry_test(sym, vix, start="2018-01-01", **cfg)
+        bh = buy_hold(sym, start="2018-01-01")
+        if not r:
+            print(f"  {sym}: (no result)")
+            continue
+        verdict = ("BEATS random (real timing edge)" if r["percentile"] >= 95 else
+                   "edge unclear" if r["percentile"] >= 75 else "NO timing edge (= drift)")
+        print(f"  {sym}:  strategy net={r['strat_net']:+.1f}% (PF {r['strat_pf']:.2f}, n={r['n']})")
+        print(f"          random-entry: median={r['rand_median']:+.1f}%  95th-pct={r['rand_p95']:+.1f}%"
+              f"  ->  strategy is at the {r['percentile']:.0f}th percentile  [{verdict}]")
+        print(f"          buy-and-hold: {bh['net_pct']:+.1f}% (maxDD {bh['maxdd_pct']:.0f}%) over {bh['days']} days\n")
+
+
 def optimize(sym, vix, is_end="2023-01-01"):
     """FULL-GRID in-sample optimize (max profit) -> OOS validate. Local, fast, exhaustive
     (no genetic sampling). Returns (best_cfg, is_metrics, oos_metrics)."""

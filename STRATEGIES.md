@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation) — **gold-led** | Macro overlay | ✅ Excess-validated; **MT5+OOS tradeable on GOLD** | EXCESS robust across AUD/NZD FX + gold, but **OOS realistic-execution separates them**: **Gold OOS-profitable (PF ≈1.3-2.0, arm-sensitive on n=16; DD 18-33%)**; AUDJPY marginal-but-+ve OOS (PF 1.25, low DD); **AUDUSD fails OOS (PF 0.47)**. Turn-entry + ATR stop + per-instrument params. | **forward demo (gold-led)**; per-instrument params; consider dropping AUDUSD/NZDJPY from live |
+| `retail_fear` (capitulation) | Macro overlay | ❌ **FAILS the random-entry null** | Looked validated through excess/MT5/OOS/optimization — but vs **random entry** (same mechanics, random dates): **GOLD is 4th-percentile (WORSE than random; B&H +240% crushes it)**, AUDJPY only 76th (weak, n.s.). The apparent edge was **gold's drift**, not timing. | **do not deploy.** Re-examine only if a turn-based entry can beat random on a non-drifting instrument |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -391,6 +391,28 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
+## ★★★ RANDOM-ENTRY / BUY-AND-HOLD RECKONING (2026-06-03) — the gold "edge" was drift
+The ultimate null test (`backtest/mt5_sim.py::run_benchmarks`): does entering on **capitulation** dates beat
+entering on the **same number of RANDOM dates** (identical turn/stop/hold/sizing), and does it beat **buy-and-hold**?
+
+| leg | strategy net | random-entry (1000×): median / 95th | **percentile** | buy-and-hold |
+|---|---|---|---|---|
+| **GOLD** | +8.1% (PF 1.52) | **+18.8% / +29.2%** | **4th** | **+240.6%** (DD 21%) |
+| AUDJPY | +6.2% (PF 1.47) | +3.4% / +9.6% | 76th | +30.7% (DD 30%) |
+
+- **GOLD has NO timing edge — it is WORSE than random** (4th percentile; random beat it 96% of the time) and
+  **buy-and-hold (+240%) crushes it.** The PF 1.52 / OOS 1.27 that survived the excess study, MT5, OOS *and*
+  optimization was **just gold's uptrend**; the capitulation timing actively enters at worse-than-random moments
+  (fear-spike volatility whipsaws the turn-entry + stop). **The "one deployable edge" does not survive this null.**
+- **AUDJPY**: 76th percentile — a *weak* positive tilt (better than median random) but **not significant**, and it
+  doesn't beat its own buy-and-hold.
+- **Lesson:** the per-trade excess study (which subtracts unconditional drift) *approximated* this null but
+  UNDER-caught it once realistic mechanics (stop/turn/sizing) were added — the mechanics interact with the
+  signal's volatility regime. **Random-entry + buy-and-hold are the non-negotiable final gate.**
+- **Net effect on the system:** after this test there is **no robustly-deployable macro edge.** `distribution_short`
+  (which has an explicit control: same pumps w/o divergence *lose* −4.1%) is the only signal with a built-in
+  null-beating result — but it's single-regime and should be random-tested too before any trust.
+
 ## ★★ Comprehensive optimization across ALL strategies — the overfitting reckoning (2026-06-03)
 Applied the same protocol (comprehensive genetic IS-optimize 2018-22 → OOS-validate 2023-26, edge params swept,
 RiskPct fixed at 1%) to **every MT5-tradeable instrument**, and a date-split pseudo-OOS to the Python equity legs.
@@ -464,6 +486,13 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **★ RANDOM-ENTRY RECKONING — the gold edge was drift.** Added random-entry Monte Carlo
+  (1000×, same #entries + mechanics, random dates) + buy-and-hold to `mt5_sim`. **GOLD capitulation is at the
+  4th percentile of random** (worse than random; B&H +240% vs strategy +8%) → the PF that survived excess/MT5/
+  OOS/optimization was just **gold's uptrend**, with the signal timing it *worse than random*. AUDJPY only 76th
+  (weak, n.s.). **No deployable macro edge survives this null** — `retail_fear` downgraded to ❌. distribution_short
+  (has a built-in control) is the only signal with a null-beating result, but is single-regime. Random-entry +
+  B&H are now the mandatory final gate.
 - **2026-06-03** — **Full backtest suite + optimization now runs LOCALLY in Python.** Added a local full-grid
   optimizer to `mt5_sim` (IS→OOS, on the MT5 broker OHLC, ~7k sims in seconds) + series caching. Re-ran
   everything locally: the MT5-replica reproduces the reckoning (only GOLD holds OOS, max-IS PF 2.19;
