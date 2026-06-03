@@ -19,7 +19,7 @@ changelog at the bottom on every material change.
 | 🔄 **In progress** | Data/build task underway |
 
 ## Progress at a glance
-_Last updated: 2026-06-02. Update this section whenever a status, metric, or next-step changes._
+_Last updated: 2026-06-03. Update this section whenever a status, metric, or next-step changes._
 
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
@@ -28,7 +28,8 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
-| `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | ✅ **Passes random-entry null** — the one real edge | **+7.38%/10d, t=2.83**; beats **random dates (100th pct)** AND **random concentrated pumps (98th)** — real timing+selection, not drift. (date-clustered t=2.52; dose-response; control w/o divergence *loses* −4.1%.) Caveats: single-regime, fades 2nd half, small-cap → **puts**. | forward OOS; tighten `per_author`; express via puts |
+| `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | ✅ **The one validated edge — regime-CONDITIONAL** | **+11.78%/trade blended (t=3.57, PF 3.84, Sharpe 2.27); +20.96% in current regime (t=4.31, null 100th).** Generalizes micro→small→mid but **REVERSES on large/mega** (−1.9%, win 31% — Reddit can't move a $100B name); strongest in the **liquid $5-15 band (t=5.26)**. **MT5-validated on broker prices** (36/37 names tradeable, +11.02%, regime pattern replicates, 2025 +30%). | forward-OOS clock accruing; **trade liquid small/mid names via PUTS, tight-spread only** |
+| `frothy_retail_regime` (regime filter / kill-switch) | Meta / regime | 💡 **Idea — detector unbuilt** | distribution_short is regime-CONDITIONAL: it FIRES only in active retail froth, is STRONG when froth is **orderly** (2025-26 +21%), **DEAD when froth turns MANIC** (2021 re-squeezes, null 46th), and **dormant** in quiet regimes (2023 had ~12 concentrated pumps all year). The **signal count itself is a regime tell.** | build a robust mania detector — **froth-index FAILED** (2021≈2025), adaptive-performance only marginal; needs a small-cap squeeze-breadth / meme-vol index. Meanwhile: gate OFF in mania + always puts |
 | `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
 | `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
 | `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
@@ -540,6 +541,13 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **★ Multi-regime validation + frothy-retail regime added to the scoreboard.** Deep-backfilled
+  the corpus to 2021 (`archive_backfill_deep`, 5 micro-cap subs, 330k+ posts; DuckDB research store, 9.6× faster).
+  Three-regime test (`backtest/regime_test.py`, `backtest/distribution_short.py`): distribution_short is
+  **regime-CONDITIONAL** — 2021 mania null 46th (DEAD, re-squeezes), 2022 bear +18.7%, 2025-26 +20.96% (null 100th).
+  **MT5-validated on broker OHLC** (`scripts/mt5_dist_short_backtest.py`): 36/37 names tradeable, +11.02%, pattern
+  replicates. **Cap-tier:** works micro→small→mid, reverses on large/mega; strongest in liquid $5-15 band (t=5.26).
+  Added **`frothy_retail_regime`** as a tracked regime-filter idea (detector unbuilt — froth-index failed).
 - **2026-06-03** — **★ distribution_short clean-universe + forward-OOS log (`backtest/dist_short_oos.py`).**
   Found the signal universe was polluted with mega-caps / common-word false-positive tickers / ETFs / crypto —
   excluding them a priori **doubled the edge to +21.46% (win 84%, t=4.10)** and revealed the earlier "recent
