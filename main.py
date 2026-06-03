@@ -1607,6 +1607,16 @@ Commands:
                     print(f"📝 distribution_short OOS log: +{_n_new} new signal(s), {_n_closed} closed")
             except Exception as e:
                 print(f"⚠️ distribution_short OOS step skipped: {e}")
+            # Surface any FRESH TRADEABLE distribution_short signal (liquid $5-50 small/mid) — the
+            # deployable actionable alert, expressed via puts. (See backtest/live_signals.py.)
+            try:
+                from backtest.live_signals import fresh_tradeable
+                _ft = fresh_tradeable(days=7)
+                if _ft:
+                    _alert = ", ".join(f"{t} ${p:.2f}({tier})" for _, t, tier, p, *_ in _ft)
+                    print(f"🚨 distribution_short TRADEABLE (short via puts): {_alert}")
+            except Exception as e:
+                print(f"⚠️ live-signal alert step skipped: {e}")
 
         if args.every:
             from scheduler import control as sched_control
