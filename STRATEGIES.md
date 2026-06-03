@@ -464,6 +464,11 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Python replica of the MT5 EA (`backtest/mt5_sim.py`) — cross-check.** Re-ran the
+  capitulation legs in Python (turn entry / ATR stop / risk sizing). Qualitative verdicts reproduce (gold
+  +ve, **silver overfits 2.02→0.76 OOS**, all legs thin PF ~1.0-1.5) — BUT the prices table is **close-only**,
+  so DD is badly understated (Python 4-7% vs MT5 22-67%) and stops are approximate. Confirms the edge story;
+  NOT reliable for drawdown. **Data gap to close: OHLC prices** would make the Python backtest MT5-accurate.
 - **2026-06-03** — **Optimized ALL strategies (IS→OOS) → the overfitting reckoning.** Comprehensive genetic
   optimization of capitulation-long on every MT5 instrument (AUDJPY/AUDUSD/Silver/US500/USTEC) + date-split
   for distribution_short. **Every per-instrument optimum overfit and failed OOS** (IS PF 2.0-2.85 → OOS
