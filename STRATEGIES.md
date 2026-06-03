@@ -391,7 +391,32 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
+## ✅ Full backtest-suite refresh (2026-06-03, on the extended 2016-26 data, 100% pump-author coverage)
+Re-ran every Python backtest module. **Conclusions held — the system is stable.**
+
+| module / signal | result on current data | verdict |
+|---|---|---|
+| `run_all` retail_fear **AUDJPY** | excess **+0.21pp**, win 62% | ✅ SURVIVOR (core macro edge) |
+| `run_all` retail_fear SPY / QQQ | excess +0.12 / +0.24pp, win 66% | ✅ marginal survivors (SPY flipped −0.05→+0.12 on the longer data) |
+| `microstructure` **distribution_short** | **+7.38%/10d, t=2.83**, +ve all 3 regimes | ✅ holds (strengthened) |
+| `sectors` smallcap_pump_fade | +8.54% excess short (t=−3.89) | 🟡 single-regime |
+| `sectors` biotech_catalyst | +56% but win 42% (t=2.13) | 🟡 lottery |
+| `macro_research` euphoria/momentum/fade | all negative-excess except a marginal QQQ down-fade | ❌ no edge |
+| `run_all` attention_fade / organic_long | −1.21 / −3.74 | ❌ dead |
+| `calendar_events` turn-of-month | +1.20%/5d, **t=6.46** (Nov, seasonality) | ⚪ real but generic equity overlay, not Reddit alpha |
+| `trend` AUDJPY trend-gate | ungated robust every year; gating thins it | confirms AUDJPY stays **ungated** |
+| `trend` euphoria_short | only +ve in the 2022 bear | confirms **parked** |
+
+**Caveat (the gap that matters):** these are the *statistical* (excess-vs-B&H) edges; the macro excesses are
+thin (+0.1-0.2pp). The *tradeable* reality from the MT5 + OOS work is narrower — only **gold** survived
+realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal, AUDUSD/NZDJPY failed.
+So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
+
 ## Changelog
+- **2026-06-03** — **Full backtest-suite refresh.** Re-ran run_all / fear_gate / microstructure / sectors /
+  calendar_events / trend / macro_research on the extended 2016-26 data. All conclusions held: capitulation-long
+  a consistent SURVIVOR (AUDJPY +0.21 / SPY +0.12 / QQQ +0.24 excess), distribution_short +7.38% t=2.83,
+  smallcap/biotech single-regime, euphoria/momentum/attention dead, turn-of-month a generic overlay. System stable.
 - **2026-06-03** — **Gold-led basket + per-instrument EA params.** Trimmed live `INSTRUMENTS` to the OOS
   survivors: **XAUUSD (primary) + AUDJPY (small secondary)**; dropped AUDUSD (OOS PF 0.47) and NZDJPY
   (no OOS). EA live basket now uses **per-leg** StopATR/MaxHoldDays/Risk (gold 3/11/1.0%, AUDJPY 2/24/0.5%)
