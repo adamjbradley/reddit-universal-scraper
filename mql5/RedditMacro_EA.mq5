@@ -20,10 +20,12 @@ enum ENUM_SIZING { SIZING_FIXED=0, SIZING_ATR=1, SIZING_KELLY=2 };
 
 // NOTE: the text after each input is its DISPLAY LABEL in MT5.
 // --- entry / exit ---
+// Defaults = the OOS-validated robust GOLD set (StopATR 3 / hold 11 -> OOS PF 1.96, DD 18%).
+// AUDJPY prefers a longer hold (~24); AUDUSD/NZDJPY did not survive OOS (see STRATEGIES.md).
 input bool   TurnEntry       = true;            // Enter on the TURN (first up-bar after capitulation), not the first fall
-input int    ArmWindow       = 7;               // Bars to wait for the turn (else stand down)
-input double StopATR         = 2.0;             // Stop = StopATR x ATR (0 = no stop)
-input int    MaxHoldDays     = 10;              // Max hold (TRADING days / bars)
+input int    ArmWindow       = 5;               // Bars to wait for the turn (>=3 is irrelevant)
+input double StopATR         = 3.0;             // Stop = StopATR x ATR (0 = no stop)
+input int    MaxHoldDays     = 11;              // Max hold (TRADING days / bars)
 // --- sizing ---
 input ENUM_SIZING SizingMethod = SIZING_ATR;    // Position sizing method
 input double RiskPctPerTrade = 1.0;             // ATR/Kelly base risk % of equity per trade

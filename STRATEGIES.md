@@ -24,7 +24,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 ### Strategy scoreboard
 | Strategy | Class | Status | Headline result | Next action |
 |---|---|---|---|---|
-| `retail_fear` (capitulation / bear-extreme / pessimism-fade) | Macro overlay | ✅ Excess-validated + **MT5-tradeable (turn entry)** | **EXCESS vs B&H** robust (AUDJPY VIX-gated t(exc)=2.93, +ve 8/9 yrs 2018-26; ungated t=2.52 2016-26; generalises across AUD/NZD FX + gold). Naive long-on-trigger *failed* in MT5 (PF 0.77), **but a turn-based entry + ATR stop fixes it: AUDJPY PF 1.06, Gold PF 1.54 / Sharpe 0.41** (ATR/Fixed sizing; Kelly oversizes). | forward OOS + small demo allocation; gold is the strongest leg |
+| `retail_fear` (capitulation) — **gold-led** | Macro overlay | ✅ Excess-validated; **MT5+OOS tradeable on GOLD** | EXCESS robust across AUD/NZD FX + gold, but **OOS realistic-execution separates them**: **Gold robust (OOS PF 1.96, DD 18%)**; AUDJPY marginal (OOS PF 1.31, needs long hold); **AUDUSD fails OOS (PF 0.47)**. Turn-entry + ATR stop + gold-robust params (StopATR 3/hold 11). | **forward demo (gold-led)**; per-instrument params; consider dropping AUDUSD/NZDJPY from live |
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
@@ -357,7 +357,7 @@ with a `StopATR×ATR` stop**; plus selectable sizing (Fixed / ATR / **Kelly**). 
 - **Sizing verdict: ATR/Fixed win; Kelly OVERSIZES.** Even half-Kelly hit its cap on these thin edges and blew drawdowns to 30% (AUDJPY) / 80% (Gold) with PF≈1.0 — no return benefit. The textbook result: **Kelly is too aggressive for thin/uncertain edges; fixed-fractional ATR (~1%/trade) is the right default.**
 - **Still preliminary:** PFs are modest, gold DD is high (33-45%), and this is in-sample on the same series the signal was built on. Forward OOS + a small live demo allocation are the next validation steps. But the basket is now **tradeable, not just a statistical curiosity.**
 
-## MT5 parameter optimization (Gold, 2026-06-03) — in-sample optimize → OOS validate
+## MT5 parameter optimization (2026-06-03) — in-sample optimize → OOS validate
 Ran the **MT5 genetic optimizer** (headless; every pass logged via frames to `rrai_opt_log.csv`;
 `mql5/RedditMacro_Optimize.ini`) on Gold, sweeping ArmWindow / StopATR / MaxHoldDays, **in-sample 2018-2022**,
 maximising net profit — then **validated the winners out-of-sample (2023-2026)**:
@@ -371,9 +371,32 @@ maximising net profit — then **validated the winners out-of-sample (2023-2026)
 - **Encouraging:** the signal **didn't badly overfit** — *every* parameter set stayed profitable OOS (PF 1.5-2.0). The gold leg is robust to parameter choice.
 - **But "max profit" is the wrong objective:** it picked a tight-stop / quick-exit corner with **2-3× the drawdown** (42-55%) for the *same* PF. **The robust set (wide stop 3×ATR, hold ~11d) wins OOS: PF 1.96, DD 18%, win 62%** — optimise for *risk-adjusted* return (Sharpe/PF-with-DD), not raw profit.
 - **ArmWindow ≥3 is irrelevant** (the turn arrives within ~3 bars). The live params worth using on gold: **StopATR≈3, MaxHoldDays≈11**.
-- Caveat: gold only (the strongest leg); ~40 IS / ~16-27 OOS trades — still small. Per-instrument optimisation + forward OOS remain the next steps.
+### Per-instrument optimization (AUDJPY + AUDUSD, same IS→OOS protocol) — the deployable reality
+Optimised AUDJPY and AUDUSD the same way (genetic IS 2018-22 → OOS validate 2023-26):
+
+| leg | best-robust (IS) | **OOS PF / net / DD** | verdict |
+|---|---|---|---|
+| **Gold** | stop 3, hold 11 | **1.96 / +$3.5k / 18%** | ✅ **robust — the deployable leg** |
+| AUDJPY | stop 2, hold **24** | 1.31 / +$171 / 5% | ⚠️ marginal — only +ve OOS with a *long* hold; default (hold 10) is **−ve** (PF 0.87) |
+| AUDUSD | stop 2, hold 5 | **0.47 / −$603** | ✗ **overfit — fails OOS** (IS PF 1.78 → OOS 0.47) |
+
+- **Only Gold robustly survives** realistic execution + OOS. **AUDUSD fails OOS** (its positive *excess* t-stat doesn't translate — excess≠tradeable, again — AUDUSD declined 2023-26 so long-only loses in dollars). **AUDJPY is thin/finicky** (needs hold≈24; the shared-basket default hold underperforms it).
+- **Implication for the live basket:** it's really **gold-led**. AUDJPY is a marginal secondary; **AUDUSD (and untested NZDJPY) are not OOS-validated** and should be demo-only or dropped. The single-param-set basket EA is also suboptimal here (gold wants hold 11, AUDJPY wants 24) → **per-instrument params** would be the right enhancement.
+- EA defaults set to the **gold-robust** set (StopATR 3 / MaxHoldDays 11 / ArmWindow 5).
+
+### ▶ Forward-OOS / demo plan (the real test — clock starts now)
+In-sample backtests (even OOS-split) can't fully clear overfitting; the honest validation is **forward**:
+1. **Deploy on a demo account, gold-led.** Attach `RedditMacro_EA` to **XAUUSD** (and AUDJPY) on a demo, `StrategyTag=retail_fear`, ATR sizing 1%/trade, gold-robust params. Enable WebRequest for the `/signals` URL.
+2. **The `/signals` feed already serves the live trigger** (capitulation + VIX + fear_z); the EA mirrors it. From today, every fill is genuine OOS.
+3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
+4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
 ## Changelog
+- **2026-06-03** — **Optimized AUDJPY+AUDUSD too → only GOLD survives OOS; set gold defaults; forward plan.**
+  Same IS→OOS protocol: Gold robust (OOS PF 1.96/DD 18%), AUDJPY marginal (OOS PF 1.31, needs hold≈24,
+  default hold-10 goes −ve), **AUDUSD overfits & fails OOS (1.78→0.47)** — its +excess t-stat doesn't trade
+  (it declined). So the live basket is **gold-led**; AUDUSD/NZDJPY demo-only/drop. Set EA defaults to the
+  gold-robust set (StopATR 3/hold 11/arm 5, recompiled). Added a forward-OOS/demo deployment plan.
 - **2026-06-03** — **MT5 optimizer run (gold): in-sample optimize → OOS validate.** Genetic sweep of
   entry/exit params, profit-maximised IS (2018-22), validated OOS (2023-26). Signal didn't badly overfit
   (all sets OOS-profitable, PF 1.5-2.0) but max-profit = a high-DD corner (42-55%); the **robust set (stop
