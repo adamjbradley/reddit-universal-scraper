@@ -1613,7 +1613,7 @@ Commands:
                 from backtest.live_signals import fresh_tradeable
                 _ft = fresh_tradeable(days=7)
                 if _ft:
-                    _alert = ", ".join(f"{t} ${p:.2f}({tier})" for _, t, tier, p, *_ in _ft)
+                    _alert = ", ".join(f"{r[1]} ${r[3]:.2f}({r[2]}/{r[-1]})" for r in _ft)
                     print(f"🚨 distribution_short TRADEABLE (short via puts): {_alert}")
             except Exception as e:
                 print(f"⚠️ live-signal alert step skipped: {e}")

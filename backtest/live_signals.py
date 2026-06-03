@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from backtest.microstructure import _rows, _trailing_ret
 from backtest.engine import _load_prices
 from backtest.dist_short_oos import ETFS as BLOCK
-from analytics.marketcap import is_micro_to_mid
+from analytics.marketcap import is_micro_to_mid, sector_class
 
 
 def _px_at(px, t, d):
@@ -45,10 +45,13 @@ def signals(px, days):
             continue
         if not is_micro_to_mid(d["ticker"]):                  # large/mega-cap -> edge REVERSES, drop
             continue
+        sec = sector_class(d["ticker"])
+        if sec == "AVOID":                                    # Energy -> squeeze landmine, drop
+            continue
         tier = ("CONVICTION" if pa >= 3 and mn >= 10
                 else "BALANCED" if mn >= 10 else "CAPACITY")
         p = _px_at(px, d["ticker"], d["date"])
-        out.append((d["date"][:10], d["ticker"], tier, p, pa, mn, s))
+        out.append((d["date"][:10], d["ticker"], tier, p, pa, mn, s, sec))
     return sorted(out, reverse=True)
 
 
@@ -88,13 +91,18 @@ def run(days=21):
         if not rows:
             continue
         print(f"  {tier_lbl}:")
-        print(f"    {'date':10} {'ticker':7} {'px':>7}  {'liq':6} {'per_auth':>8} {'ment':>5} {'sent':>5}")
-        for dt, t, _, p, pa, mn, s in rows:
+        print(f"    {'date':10} {'ticker':7} {'px':>7}  {'liq':6} {'sector':9}  notes")
+        for dt, t, _, p, pa, mn, s, sec in rows:
             pxs = f"${p:.2f}" if p else "n/a"
             lq = _liq(p)
-            note = {"SKIP  ": "  <- illiquid, skip", "THIN  ": "  <- thin, scale down",
-                    "VERIFY": "  <- verify mkt-cap (mid OK; true mega reverses)"}.get(lq, "")
-            print(f"    {dt:10} {t:7} {pxs:>7}  {lq} {pa:>8.1f} {mn:>5} {s:>5.2f}{note}")
+            tags = []
+            if sec == "PREFERRED":
+                tags.append("* Tech/Indl core edge")
+            elif sec == "WEAK":
+                tags.append("! biotech: long-catalyst, not short")
+            tags += {"SKIP  ": ["illiquid, skip"], "THIN  ": ["thin, scale down"],
+                     "VERIFY": ["verify cap"]}.get(lq, [])
+            print(f"    {dt:10} {t:7} {pxs:>7}  {lq} {sec:9}  {'; '.join(tags)}")
         print()
     trade = [x for x in sig if x[3] and 5 <= x[3] <= 50]
     print(f"  -> {len(trade)} of {len(sig)} signals are TRADEABLE ($5-50 liquid small/mid); "
