@@ -28,6 +28,10 @@ H, SPREAD, BORROW = 10, 75, 8.0
 # Notional per position for the equity curve. A single micro-cap short can lose >100% on a squeeze
 # (BFRI -115%), so full-capital compounding is meaningless — you size small and/or express via PUTS
 # (defined risk: max loss = premium). 10% notional is a conservative, realistic book weight.
+# NOTE on the puts-capped figures elsewhere: a "cap losses at -X%" model is OPTIMISTIC — it floors
+# the downside WITHOUT charging premium on winners. These micro-caps have huge IV (~150-300%), so a
+# 2-4wk put costs ~12-15% of spot; with that premium drag the realistic puts edge is ~+5%/trade,
+# PF ~2.6 (not the +13%/PF 6 of the loss-cap model). Plan around +5%/trade; t-stat (3.57) is the gauge.
 FRACTION = 0.10
 REGIME = {"2021": "2021 mania", "2022": "2022 bear", "2023": "2023 recovery",
           "2024": "2024 chop", "2025": "2025-26 now", "2026": "2025-26 now"}
