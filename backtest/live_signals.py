@@ -4,9 +4,10 @@ Applies the frozen spec to the FRESHEST data (use_store=False) and emits an acti
 by CONVICTION tier and LIQUIDITY tier, with the defined-risk PUTS framing. The edge is the
 rollover gate (trailing-5d<0); always express via puts — caps the squeeze tail (BFRI -115%).
 
-Conviction tiers (same engine, concentration knob):
-  HIGH  — per_author>=2 & mentions>=10  (highest per-trade, +12.7%)
-  CAP   — per_author>=3 & mentions>=8   (higher capacity, +9.5%, positive every regime)
+Conviction tiers (from backtest/signal_levels.py — same engine, different gate levels, all robust):
+  CONVICTION — per_author>=3 & mentions>=10  (+16.3%/trade, t4.22)  -> size UP
+  BALANCED   — per_author>=2 & mentions>=10  (+11.8%/trade)         -> default size
+  CAPACITY   — per_author>=2 & mentions>=5   (+4.6%/trade, ~6x more) -> size DOWN (thinner edge)
 Liquidity tiers (signal-day price = optionability/borrow proxy):
   TRADE $5+  |  THIN $2-5  |  SKIP <$2 (no options / lethal borrow)
 
@@ -19,6 +20,7 @@ from datetime import datetime, timedelta
 from backtest.microstructure import _rows, _trailing_ret
 from backtest.engine import _load_prices
 from backtest.dist_short_oos import ETFS as BLOCK
+from analytics.marketcap import is_micro_to_mid
 
 
 def _px_at(px, t, d):
@@ -39,12 +41,12 @@ def signals(px, days):
         roll = (_trailing_ret(px, d["ticker"], d["date"], 5) or 9) < 0
         if not (s >= 0.4 and roll):
             continue
-        if pa >= 2 and mn >= 10:
-            tier = "HIGH"
-        elif pa >= 3 and mn >= 8:
-            tier = "CAP"
-        else:
+        if pa < 2 or mn < 5:                                  # below the CAPACITY floor
             continue
+        if not is_micro_to_mid(d["ticker"]):                  # large/mega-cap -> edge REVERSES, drop
+            continue
+        tier = ("CONVICTION" if pa >= 3 and mn >= 10
+                else "BALANCED" if mn >= 10 else "CAPACITY")
         p = _px_at(px, d["ticker"], d["date"])
         out.append((d["date"][:10], d["ticker"], tier, p, pa, mn, s))
     return sorted(out, reverse=True)
@@ -79,8 +81,9 @@ def run(days=21):
     if not sig:
         print("  no fresh signals in window.")
         return
-    for tier_lbl, code in (("HIGH-CONVICTION (pa>=2, m>=10)", "HIGH"),
-                           ("HIGHER-CAPACITY (pa>=3, m>=8)", "CAP")):
+    for tier_lbl, code in (("CONVICTION (pa>=3, m>=10  ~+16%/trade -> size UP)", "CONVICTION"),
+                           ("BALANCED   (pa>=2, m>=10  ~+12%/trade -> default)", "BALANCED"),
+                           ("CAPACITY   (pa>=2, m>=5   ~+5%/trade  -> size DOWN)", "CAPACITY")):
         rows = [x for x in sig if x[2] == code]
         if not rows:
             continue
