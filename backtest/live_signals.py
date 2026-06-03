@@ -66,8 +66,8 @@ def _liq(p):
     if p < 5:
         return "THIN  "          # marginal options/borrow
     if p <= 50:
-        return "TRADE "          # liquid small/mid -- the edge's sweet spot
-    return "LARGE?"              # >$50 likely large-cap -> edge REVERSES, do NOT short
+        return "TRADE "          # liquid small/mid -- the validated sweet spot
+    return "VERIFY"             # >$50: verify mkt-cap (true mega-caps reverse & are blocklisted; mid-caps OK)
 
 
 def run(days=21):
@@ -90,7 +90,7 @@ def run(days=21):
             pxs = f"${p:.2f}" if p else "n/a"
             lq = _liq(p)
             note = {"SKIP  ": "  <- illiquid, skip", "THIN  ": "  <- thin, scale down",
-                    "LARGE?": "  <- likely large-cap, edge REVERSES, skip"}.get(lq, "")
+                    "VERIFY": "  <- verify mkt-cap (mid OK; true mega reverses)"}.get(lq, "")
             print(f"    {dt:10} {t:7} {pxs:>7}  {lq} {pa:>8.1f} {mn:>5} {s:>5.2f}{note}")
         print()
     trade = [x for x in sig if x[3] and 5 <= x[3] <= 50]
