@@ -16,13 +16,20 @@ from export.database import get_connection
 from backtest.fear_gate import capitulation_sets
 
 
+_SCACHE = {}
+
+
 def _series(sym):
+    if sym in _SCACHE:
+        return _SCACHE[sym]
     c = get_connection()
     rows = c.execute("SELECT date, open, high, low, close FROM mt5_ohlc WHERE symbol=? ORDER BY date",
                      (sym,)).fetchall()
     c.close()
-    return ([r["date"] for r in rows], [r["open"] for r in rows], [r["high"] for r in rows],
-            [r["low"] for r in rows], [r["close"] for r in rows])
+    s = ([r["date"] for r in rows], [r["open"] for r in rows], [r["high"] for r in rows],
+         [r["low"] for r in rows], [r["close"] for r in rows])
+    _SCACHE[sym] = s
+    return s
 
 
 def _atr(highs, lows, closes, i, period):
@@ -87,6 +94,44 @@ def simulate(sym, dateset, turn=True, arm=5, stopATR=3.0, hold=11, atrp=14, risk
             "net_pct": (equity - 1.0) * 100.0, "maxdd_pct": maxdd * 100.0}
 
 
+def optimize(sym, vix, is_end="2023-01-01"):
+    """FULL-GRID in-sample optimize (max profit) -> OOS validate. Local, fast, exhaustive
+    (no genetic sampling). Returns (best_cfg, is_metrics, oos_metrics)."""
+    best = None
+    for turn in (True, False):
+        for arm in (3, 5, 7, 10):
+            for stop in (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0):
+                for hold in (5, 7, 9, 11, 15, 20, 25):
+                    for atrp in (7, 14, 21):
+                        r = simulate(sym, vix, turn=turn, arm=arm, stopATR=stop, hold=hold,
+                                     atrp=atrp, end=is_end)
+                        if r and "note" not in r and r["n"] >= 20:
+                            if best is None or r["net_pct"] > best[1]["net_pct"]:
+                                best = ((turn, arm, stop, hold, atrp), r)
+    if best is None:
+        return None
+    cfg, isr = best
+    oos = simulate(sym, vix, turn=cfg[0], arm=cfg[1], stopATR=cfg[2], hold=cfg[3], atrp=cfg[4],
+                   start=is_end)
+    return cfg, isr, oos
+
+
+def optimize_all():
+    vix = capitulation_sets()["vixgated"]
+    print("=== LOCAL full-grid optimize (IS 2018-22, max profit) -> OOS validate ===")
+    print(f"  {'leg':8} {'best IS cfg (turn/arm/stop/hold/atrp)':38} {'IS_PF':>5} {'OOS_PF':>6} verdict")
+    for sym in ("XAUUSD", "AUDJPY", "AUDUSD", "XAGUSD", "US500", "USTEC"):
+        res = optimize(sym, vix)
+        if not res:
+            print(f"  {sym:8} (no result)")
+            continue
+        cfg, isr, oos = res
+        cfgs = f"turn={cfg[0]} arm={cfg[1]} stop={cfg[2]} hold={cfg[3]} atrp={cfg[4]}"
+        oospf = oos["pf"] if oos and "note" not in oos else 0.0
+        verdict = "HOLDS" if oospf >= 1.3 else ("degraded" if oospf >= 1.0 else "OVERFIT/FAIL")
+        print(f"  {sym:8} {cfgs:38} {isr['pf']:>5.2f} {oospf:>6.2f} {verdict}")
+
+
 def run():
     sets = capitulation_sets()
     vix = sets["vixgated"]
@@ -117,3 +162,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+    print()
+    optimize_all()
