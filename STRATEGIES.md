@@ -28,7 +28,7 @@ _Last updated: 2026-06-02. Update this section whenever a status, metric, or nex
 | `rrai_momentum_long`, `froth_high_long` | Macro overlay | ❌ No edge | positive net but ~0 **excess vs buy-&-hold** (just bull drift) | dropped |
 | `rrai_euphoria_short` + all macro shorts | Macro overlay | ❌ Failed | −1.5 to −3pp excess (shorting the bull) | dropped |
 | `dump_fade_DELETION_short` | Equity | ❌ FAILS at full coverage (was a coverage-bias artifact) | After profiling **all 487 pump-authors (25%→100%)** the edge **flips negative**: gone≥0.20 → **−19.3%/10d (n=87)**, dominated by **squeeze tails** (IXHL −625%); PIT `young_frac` short is **−39% to −87%** (young pumps rip *hardest*). The earlier +14.3% (n=36 @ 25% cov) simply hadn't profiled the squeezers. Win rate still 64% but uncapped stock-short tails kill it. | **dead as a stock short**; only conceivable via **puts** (caps the −625% tail) — `distribution_short` is the better-behaved version (price-rolling-over filter dodges live squeezes) |
-| `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | 🟡 Promising — **PIT-tradeable** | concentrated pump (per_author≥2, m≥10) + sentiment≥0.4 + 5d price already rolling over → **+7.2%/10d net short, t=2.70**; **date-clustered t=2.52 (47 indep. dates), dose-response in sentiment, +ve all 3 sub-periods, survives 2× costs**; control (same pumps, no divergence) *loses* −4.1% | OOS-collect forward; tighten `per_author` (some ETF/large-cap leak in); express via puts; promote on more episodes |
+| `distribution_short` (concentrated pump + sentiment–price divergence) | Equity | ✅ **Passes random-entry null** — the one real edge | **+7.38%/10d, t=2.83**; beats **random dates (100th pct)** AND **random concentrated pumps (98th)** — real timing+selection, not drift. (date-clustered t=2.52; dose-response; control w/o divergence *loses* −4.1%.) Caveats: single-regime, fades 2nd half, small-cap → **puts**. | forward OOS; tighten `per_author`; express via puts |
 | `fade_organic_short` | Equity | 🟡 Marginal | +0.83%/5d but P3 flips | retry via puts + VIX/vol gate |
 | `pump_long` (ride) | Equity | ❌ Failed | +3% but regime-flips, t=0.75 | — drop |
 | `dump_fade_short` (naive) | Equity | ❌ Failed | −9.9% (squeezed) | superseded by deletion-gated |
@@ -409,9 +409,24 @@ entering on the **same number of RANDOM dates** (identical turn/stop/hold/sizing
 - **Lesson:** the per-trade excess study (which subtracts unconditional drift) *approximated* this null but
   UNDER-caught it once realistic mechanics (stop/turn/sizing) were added — the mechanics interact with the
   signal's volatility regime. **Random-entry + buy-and-hold are the non-negotiable final gate.**
-- **Net effect on the system:** after this test there is **no robustly-deployable macro edge.** `distribution_short`
-  (which has an explicit control: same pumps w/o divergence *lose* −4.1%) is the only signal with a built-in
-  null-beating result — but it's single-regime and should be random-tested too before any trust.
+- **Net effect on the macro side:** after this test there is **no robustly-deployable macro edge.**
+
+### ✅ `distribution_short` PASSES the same null (the contrast that matters)
+Ran the identical random-entry null on `distribution_short` (`backtest/microstructure.py::random_null`):
+
+| test | random median / 95th | **dist_short percentile** |
+|---|---|---|
+| actual mean short net = **+7.38%** (n=62) | — | — |
+| Null A — random dates, SAME tickers | +0.02% / +3.87% | **100th** (beats all 1000) |
+| Null B — random concentrated pumps | −1.36% / +5.86% | **98th** |
+
+- **The opposite of gold.** Shorting the same tickers on *random* dates → ~0%; shorting *random* concentrated
+  pumps → −1.4%. distribution_short's +7.38% sits at the **100th / 98th percentile** → both its **timing** (the
+  price-rolling-over divergence) AND its **selection** (concentrated-pump + euphoric-sentiment gate) add real,
+  non-drift value. **This is the one signal that earns the "real edge" label.**
+- **Remaining caveats (so it's not over-trusted):** single-regime (~2025-26, no historical penny prices to
+  multi-regime validate); it **fades in its 2nd half** (date-split t=3.16→0.71); small-cap shorts have squeeze/
+  borrow/HTB tails → **express via puts**. So: *real, but not yet deployable-with-confidence* — needs forward OOS.
 
 ## ★★ Comprehensive optimization across ALL strategies — the overfitting reckoning (2026-06-03)
 Applied the same protocol (comprehensive genetic IS-optimize 2018-22 → OOS-validate 2023-26, edge params swept,
@@ -486,6 +501,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **distribution_short PASSES the random-entry null — the one real edge.** Same null applied
+  (`microstructure.random_null`): vs random dates on the same tickers → **100th percentile**; vs random
+  concentrated pumps → **98th**. So its timing (divergence) AND selection (gate) add real, non-drift value —
+  the exact opposite of gold (4th pct). Still single-regime + fades in 2nd half + small-cap → puts, so real
+  but not yet deployable-with-confidence. The system's honest state: **ONE real edge (distribution_short),
+  no deployable macro edge.**
 - **2026-06-03** — **★ RANDOM-ENTRY RECKONING — the gold edge was drift.** Added random-entry Monte Carlo
   (1000×, same #entries + mechanics, random dates) + buy-and-hold to `mt5_sim`. **GOLD capitulation is at the
   4th percentile of random** (worse than random; B&H +240% vs strategy +8%) → the PF that survived excess/MT5/

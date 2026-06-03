@@ -167,5 +167,44 @@ def main():
           "ride only while new blood still arriving AND attention still accelerating")
 
 
+def random_null(seed=42, M=1000):
+    """Random-entry null for distribution_short (the mandatory final gate). Compares the strategy's
+    mean short return to (A) shorting the SAME tickers on RANDOM dates and (B) shorting RANDOM
+    concentrated-pump events. >95th percentile on both = a real timing+selection edge (not drift)."""
+    import random
+    import statistics
+    from collections import defaultdict
+    px = _load_prices()
+    rows = [d for d in _rows() if d["new_frac_trail"] is not None]
+    CONC = lambda d: (d["per_author"] or 0) >= 2.0 and (d["mentions"] or 0) >= 10
+    ds = [d for d in rows if CONC(d) and (d["sentiment"] or -9) >= 0.4
+          and (_trailing_ret(px, d["ticker"], d["date"], 5) or 9) < 0]
+
+    def mean_net(ev):
+        r = [_net(px, d["ticker"], d["date"], -1, 10, 75, 8.0, True) for d in ev]
+        r = [x for x in r if x is not None]
+        return statistics.mean(r) * 100 if len(r) >= 5 else None
+
+    actual = mean_net(ds)
+    conc = [d for d in rows if CONC(d)]
+    tdates = defaultdict(list)
+    for d in rows:
+        tdates[d["ticker"]].append(d["date"])
+    rng = random.Random(seed)
+
+    def mc(gen):
+        nets = sorted(x for x in (mean_net(gen()) for _ in range(M)) if x is not None)
+        pct = 100.0 * sum(1 for x in nets if x < actual) / len(nets)
+        return nets[len(nets) // 2], nets[int(len(nets) * 0.95)], pct
+
+    a = mc(lambda: [{"ticker": d["ticker"], "date": rng.choice(tdates[d["ticker"]])} for d in ds])
+    b = mc(lambda: rng.sample(conc, min(len(ds), len(conc))))
+    print(f"distribution_short actual mean short net = {actual:+.2f}%  (n={len(ds)})")
+    print(f"  Null A random dates / same tickers:  median {a[0]:+.2f}%  -> {a[2]:.0f}th percentile")
+    print(f"  Null B random concentrated pumps:    median {b[0]:+.2f}%  -> {b[2]:.0f}th percentile")
+
+
 if __name__ == "__main__":
     main()
+    print()
+    random_null()
