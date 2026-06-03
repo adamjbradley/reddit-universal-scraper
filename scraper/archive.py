@@ -81,6 +81,63 @@ def archive_backfill(subreddit, extract_fn, days=180, dry_run=False, max_pages=3
     return total
 
 
+def _month_windows(start_iso, end_iso):
+    """Yield (label, after_ts, before_ts) for each calendar month in [start, end)."""
+    cur = datetime.date.fromisoformat(start_iso).replace(day=1)
+    end = datetime.date.fromisoformat(end_iso)
+    while cur < end:
+        nxt = (cur.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+        a = int(datetime.datetime(cur.year, cur.month, 1).timestamp())
+        b = int(datetime.datetime(nxt.year, nxt.month, 1).timestamp())
+        yield cur.strftime("%Y-%m"), a, b
+        cur = nxt
+
+
+def archive_backfill_deep(subreddit, extract_fn, start_iso, end_iso, dry_run=False,
+                          max_pages_per_month=600):
+    """Robust multi-year backfill: iterate MONTH BY MONTH and fully paginate within each window.
+    Unlike archive_backfill (which breaks the whole run on a single empty/transient batch — the bug
+    that capped history at ~Jan 2025), an empty batch here only ends the CURRENT month, so gaps and
+    hiccups don't abort the deep history. arctic-shift has data back to ~2010, so this can reach the
+    2021 meme era + 2022 bear that distribution_short and the notable-holder cross need for power."""
+    from analytics.enrich import enrich_posts
+    seen = set(get_post_permalinks(subreddit))
+    grand = 0
+    for mlabel, a, b in _month_windows(start_iso, end_iso):
+        before, mtotal, pages = b, 0, 0
+        while before > a and pages < max_pages_per_month:
+            pages += 1
+            batch = _fetch(subreddit, a, before, 100)
+            if not batch:
+                break                                   # ends THIS month only, not the run
+            posts = []
+            for p in batch:
+                if not p.get("permalink") and p.get("id"):
+                    p["permalink"] = f"/r/{subreddit}/comments/{p['id']}/"
+                post = extract_fn(p)
+                if not post.get("permalink") or post["permalink"] in seen:
+                    continue
+                seen.add(post["permalink"])
+                posts.append(post)
+            if posts and not dry_run:
+                try:
+                    mentions = enrich_posts(posts, subreddit)
+                    save_posts_batch(posts, subreddit)
+                    save_ticker_mentions(mentions)
+                    mtotal += len(posts)
+                except Exception as e:
+                    print(f"   ⚠️ save failed: {e}", flush=True)
+            oldest = min(int(p.get("created_utc", before)) for p in batch)
+            if oldest >= before:
+                break
+            before = oldest - 1
+            time.sleep(0.4)
+        grand += mtotal
+        print(f"   📜 r/{subreddit} {mlabel}: +{mtotal} (cum {grand})", flush=True)
+    print(f"   📜 r/{subreddit}: {grand} historical posts added [{start_iso}..{end_iso}]", flush=True)
+    return grand
+
+
 _AGG_COLS = """(date, total_mentions, tickers, authors, mkt_sent, bull_frac, bear_frac,
                 young_frac, gone_frac, froth, rrai_raw, rrai_pct)"""
 _AGG_DDL = """(date TEXT PRIMARY KEY, total_mentions INTEGER, tickers INTEGER, authors INTEGER,
