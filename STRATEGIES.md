@@ -391,6 +391,26 @@ In-sample backtests (even OOS-split) can't fully clear overfitting; the honest v
 3. **Track ~2-3 fear episodes** (a few months) before judging — the edge fires only a handful of times/year.
 4. Re-evaluate vs the backtest PF/DD; promote to (small) real size only if forward ≈ backtest.
 
+## ★★ Comprehensive optimization across ALL strategies — the overfitting reckoning (2026-06-03)
+Applied the same protocol (comprehensive genetic IS-optimize 2018-22 → OOS-validate 2023-26, edge params swept,
+RiskPct fixed at 1%) to **every MT5-tradeable instrument**, and a date-split pseudo-OOS to the Python equity legs.
+**The result is unambiguous: optimisation overfits almost everywhere; only one edge survives.**
+
+| strategy / instrument | IS (optimised) | **OOS** | verdict |
+|---|---|---|---|
+| capitulation **GOLD** (robust config, *not* max-optimised) | PF 1.46 | **PF 1.27-1.46, DD 22-33%** | ✅ **the one deployable edge** |
+| capitulation AUDJPY (optimised) | PF 2.01 | **PF 0.99** | ✗ overfit — collapsed |
+| capitulation AUDUSD (optimised) | PF 2.47 | **PF 0.73** | ✗ overfit — lost |
+| capitulation Silver (optimised) | PF 2.85 | **PF 0.26 (DD 115%)** | ✗ overfit — blew up |
+| capitulation US500 (optimised) | PF 1.91 | PF 1.37 | ~ held but weak signal (excess t≈0.9) |
+| capitulation USTEC | — | — | no usable result |
+| `distribution_short` (equity, date-split) | +11.4% (t=3.16, 1st half) | **+2.5% (t=0.71, 2nd half)** | 🟡 real but **fades**; single-regime, not OOS-clean |
+| `smallcap_pump_fade`, `biotech` | strong | **untestable** | single-regime (no penny price history) |
+
+- **The tell was visible before OOS:** each instrument's in-sample "optimum" was a *different random-looking corner* (turn 0/1, stop 1-4, hold 7-17, Fixed/Kelly) — no consistent pattern = curve-fit. OOS confirmed it: IS PF 2-2.85 → **OOS PF 0.26-1.37**.
+- **Only GOLD survives**, and crucially only with a config chosen for **robustness (a plateau: turn-entry, stop 3, hold 11)**, NOT the max-IS optimum (which would also overfit). distribution_short is the only other thing with real signal, but it fades in its second half and can't be cleanly OOS-tested (single-regime).
+- **Net of optimising everything:** the system has **one robustly-deployable edge (gold capitulation) + one promising-but-unvalidated equity short (distribution_short)**. Everything else is overfit, single-regime, or dead. Optimisation did not create edges — it exposed which were real.
+
 ## Comprehensive optimization (all 7 params, gold IS 2018-22) — profit-max = a leverage trap
 Swept **every return-impacting param** (TurnEntry, ArmWindow, StopATR, MaxHoldDays, AtrPeriod, SizingMethod,
 RiskPctPerTrade), genetic, max-profit. Result:
@@ -444,6 +464,12 @@ realistic single-entry execution out-of-sample (PF 1.96/DD 18%), AUDJPY marginal
 So: statistically real = capitulation-long + distribution_short; realistically deployable = **gold-led**, forward-demo pending.
 
 ## Changelog
+- **2026-06-03** — **Optimized ALL strategies (IS→OOS) → the overfitting reckoning.** Comprehensive genetic
+  optimization of capitulation-long on every MT5 instrument (AUDJPY/AUDUSD/Silver/US500/USTEC) + date-split
+  for distribution_short. **Every per-instrument optimum overfit and failed OOS** (IS PF 2.0-2.85 → OOS
+  0.26-1.37); each "best" was a different curve-fit corner. **Only GOLD survives** (robust config, OOS PF
+  1.27-1.46). distribution_short real but fades (1st-half t=3.16 → 2nd-half t=0.71). smallcap/biotech
+  untestable (single-regime). Conclusion: one deployable edge (gold) + one unvalidated (distribution_short).
 - **2026-06-03** — **Comprehensive optimization (all 7 params) → profit-max is a leverage trap.** Swept
   TurnEntry/ArmWindow/StopATR/MaxHoldDays/AtrPeriod/SizingMethod/RiskPct (genetic, gold IS). RiskPct maxed
   to the 2.0 ceiling (it's leverage, not edge) → 67% DD; profit-max flipped to turn-OFF/tight-stop/quick-exit
