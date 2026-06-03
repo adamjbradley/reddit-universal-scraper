@@ -269,9 +269,21 @@ void OnTick()
    }
 }
 
-//==================== TESTER: write results on completion ====================
+//==================== TESTER / OPTIMIZER: results ====================
+// Single run -> rrai_tester_result.txt. Optimization -> every pass is sent as a FRAME and the
+// main terminal appends it to rrai_opt_log.csv (FrameAdd/OnTesterPass = the headless-safe path).
 double OnTester()
 {
+   double prof = TesterStatistics(STAT_PROFIT);
+   if(MQLInfoInteger(MQL_OPTIMIZATION))
+   {
+      double m[10];
+      m[0]=ArmWindow; m[1]=StopATR; m[2]=MaxHoldDays; m[3]=(double)SizingMethod; m[4]=RiskPctPerTrade;
+      m[5]=TesterStatistics(STAT_TRADES); m[6]=prof; m[7]=TesterStatistics(STAT_PROFIT_FACTOR);
+      m[8]=TesterStatistics(STAT_EQUITYDD_PERCENT); m[9]=TesterStatistics(STAT_SHARPE_RATIO);
+      FrameAdd("R", 0, prof, m);
+      return prof;
+   }
    int trades = (int)TesterStatistics(STAT_TRADES);
    int wins   = (int)TesterStatistics(STAT_PROFIT_TRADES);
    double winrate = (trades > 0) ? 100.0 * wins / trades : 0.0;
@@ -286,15 +298,46 @@ double OnTester()
       FileWrite(h, "signals_loaded=" + IntegerToString(g_sn));
       FileWrite(h, "trades=" + IntegerToString(trades));
       FileWrite(h, "win_rate_pct=" + DoubleToString(winrate, 1));
-      FileWrite(h, "net_profit=" + DoubleToString(TesterStatistics(STAT_PROFIT), 2));
+      FileWrite(h, "net_profit=" + DoubleToString(prof, 2));
       FileWrite(h, "profit_factor=" + DoubleToString(TesterStatistics(STAT_PROFIT_FACTOR), 2));
       FileWrite(h, "expected_payoff=" + DoubleToString(TesterStatistics(STAT_EXPECTED_PAYOFF), 2));
       FileWrite(h, "max_equity_dd_pct=" + DoubleToString(TesterStatistics(STAT_EQUITYDD_PERCENT), 2));
       FileWrite(h, "sharpe=" + DoubleToString(TesterStatistics(STAT_SHARPE_RATIO), 2));
-      FileWrite(h, "recovery_factor=" + DoubleToString(TesterStatistics(STAT_RECOVERY_FACTOR), 2));
       FileClose(h);
-      Print("Tester results -> Common\\Files\\rrai_tester_result.txt");
    }
-   return(0.0);
+   return prof;
 }
+
+// Optimization start (main terminal): truncate the log + write a header.
+int OnTesterInit()
+{
+   int h = FileOpen("rrai_opt_log.csv", FILE_COMMON|FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   if(h != INVALID_HANDLE)
+   {
+      FileWrite(h, "arm","stopatr","hold","sizing","risk","trades","net","pf","dd","sharpe");
+      FileClose(h);
+   }
+   return(INIT_SUCCEEDED);
+}
+
+// Each optimization pass arrives here on the MAIN terminal (single-threaded) -> safe append.
+void OnTesterPass()
+{
+   ulong pass; string name; long id; double val; double data[];
+   while(FrameNext(pass, name, id, val, data))
+   {
+      if(name != "R" || ArraySize(data) < 10) continue;
+      int h = FileOpen("rrai_opt_log.csv", FILE_COMMON|FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+      if(h != INVALID_HANDLE)
+      {
+         FileSeek(h, 0, SEEK_END);
+         FileWrite(h, (int)data[0], data[1], (int)data[2], (int)data[3], data[4],
+                      (int)data[5], data[6], data[7], data[8], data[9]);
+         FileClose(h);
+      }
+   }
+}
+
+// Required whenever OnTesterInit is defined (nothing to clean up here).
+void OnTesterDeinit() { }
 //+------------------------------------------------------------------+
