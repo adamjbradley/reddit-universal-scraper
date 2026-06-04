@@ -1,5 +1,18 @@
-"""High-frequency micro-cap pump-fade via PUTS — the deployable, regime-robust, leverageable
-variant of distribution_short (2026-06-04).
+"""High-frequency micro-cap pump-fade — regime-robust high-frequency variant of
+distribution_short (2026-06-04).
+
+⚠️ CORRECTION (real-IV check, same day): the PUTS expression does NOT survive realistic premium.
+Signal-time realized vol is enormous (median 173%, p75 398%), so a 2wk ATM put costs ~14-33%
+(NOT the 12% first assumed) — and the mean 10d decline (~13%) is SMALLER than that premium, so the
+put leg is breakeven-to-NEGATIVE (IV=RV −0.9%, IV=1.2x RV −3.1%; only 2-4/7 years positive). The
+options market has priced in the crash. The NAKED market-neutral edge is REAL and large
+(+11.5%/notional on these micro-caps, regime-robust) — but micro-caps are UNBORROWABLE (can't naked
+cheaply) AND too-high-IV (can't put profitably), so the robust edge has NO clean scalable
+expression. The +36-45%/yr from portfolio() below assumes PREM=12% these names don't carry — treat
+it as an UPPER BOUND, not a forecast (pass a realistic premium / per-name IV). The borrowable
+small-caps CAN be naked but their edge is a 2024 fluke. Net: real research-grade edge, expression
+UNSOLVED.
+
 
 The tight `distribution_short` spec yields only ~1-2 deployable trades/yr. Loosening the gates
 while restricting to the LIQUID universe (cap<$10B, sector!=Energy, price>=$5) gives ~100
@@ -39,7 +52,8 @@ from backtest.engine import _load_prices, _net, _fwd
 from backtest.dist_short_oos import ETFS as BLOCK
 from analytics.marketcap import market_cap, sector_class
 
-PREM = 0.12                                   # ATM ~2wk put premium (model per-name IV before sizing)
+PREM = 0.12                                   # OPTIMISTIC: real signal-time IV implies ~14-33% premium
+                                              # (median RV 173%); puts DON'T survive realistic premium (see docstring)
 PA, MN, SENT = 1.5, 4, 0.3                    # loose gates; the liquidity filter gives the robustness
 MICRO, SMALL = 300e6, 2e9                     # <MICRO -> put core; MICRO-SMALL -> naked (opportunistic)
 
@@ -193,8 +207,9 @@ def main():
     for c in (8, 12, 20):
         r = portfolio([dict(s) for s in core], px, cap_concurrency=c)
         print(f"  cap={c:<8} {r['peryr']:>9.0f} {r['cagr']:>+7.1f}% {r['maxdd']:>10.1f}% ${r['final']:>11,.0f}")
-    print(f"\n  premium sensitivity is the open risk: 8% ~+63%/yr, 12% ~+16%/yr, 15% loses. "
-          f"Model per-name IV before sizing.")
+    print(f"\n  ⚠️ REAL-IV CHECK DONE: signal-time vol median 173% -> realistic premium ~14-33%, NOT 12%. "
+          f"At realistic IV the put leg is breakeven-to-NEGATIVE. The naked micro-cap edge is real (+11.5%) "
+          f"but these names are unborrowable -> NO clean scalable expression. Above CAGRs are an UPPER BOUND.")
 
 
 if __name__ == "__main__":
